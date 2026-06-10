@@ -1,4 +1,4 @@
-BINARY := rsvp
+BINARY := monocle
 PKG    := .
 # Install location. Override with `make install BINDIR=/usr/local/bin`.
 PREFIX ?= $(HOME)
@@ -14,7 +14,7 @@ help: ## Show this help
 
 ##@ Build
 .PHONY: build
-build: ## Compile the rsvp binary into ./bin
+build: ## Compile the monocle binary into ./bin
 	go build -o ./bin/$(BINARY) $(PKG)
 
 .PHONY: clean
@@ -23,7 +23,7 @@ clean: ## Remove built binaries
 
 ##@ Install
 .PHONY: install
-install: build ## Build rsvp and install it to BINDIR (default ~/bin)
+install: build ## Build monocle and install it to BINDIR (default ~/bin)
 	@install -d "$(BINDIR)"
 	install -m 0755 ./bin/$(BINARY) "$(BINDIR)/$(BINARY)"
 	@echo "Installed $(BINARY) -> $(BINDIR)/$(BINARY)"
