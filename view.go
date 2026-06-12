@@ -10,27 +10,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-var (
-	styleRead    = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
-	styleHead    = lipgloss.NewStyle().Foreground(lipgloss.Color("231")).Bold(true)
-	styleFocus   = lipgloss.NewStyle().Reverse(true).Bold(true)
-	styleFar     = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	styleFarHead = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Bold(true)
-	styleCode    = lipgloss.NewStyle().Foreground(lipgloss.Color("179"))
-	styleLink    = lipgloss.NewStyle().Foreground(lipgloss.Color("75")).Underline(true)
-	styleMarker  = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
-	styleGrid    = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	styleStatus  = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
-	stylePicker  = lipgloss.NewStyle().Foreground(lipgloss.Color("250")).
-			Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("242")).
-			Padding(0, 2)
-	stylePickerSel = lipgloss.NewStyle().Foreground(lipgloss.Color("231")).Bold(true)
-
-	styleCommentMark = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
-
-	cursorLineBG = lipgloss.Color("236")
-	selectionBG  = lipgloss.Color("24")
-)
+// Colors live in theme.go; the active set is m.st, built from the chosen
+// theme. Reference styles as m.st.read, m.st.focus, and so on.
 
 // View renders the document around the focal word: the current line is
 // vertically centered, the current paragraph is bright with the focal word
@@ -42,8 +23,17 @@ func (m model) View() string {
 
 	ctxW := m.ctxW()
 	panelW := m.commentPanelW()
-	avail := m.width - panelW
-	pad := strings.Repeat(" ", max((avail-ctxW)/2, 0))
+
+	// Center the text alone, or — when the panel is open — center the whole
+	// text+gap+panel block so the notes hug their context instead of being
+	// flung to the screen edge.
+	leftPad := max((m.width-ctxW)/2, 0)
+	panelLeft := 0
+	if panelW > 0 {
+		leftPad = max((m.width-(ctxW+commentGap+panelW))/2, 0)
+		panelLeft = leftPad + ctxW + commentGap
+	}
+	pad := strings.Repeat(" ", leftPad)
 	lines := layoutLines(m.doc, ctxW)
 	li := lineIndex(lines, m.idx)
 	curPara := m.doc.words[m.idx].para
@@ -54,9 +44,9 @@ func (m model) View() string {
 			return pad
 		}
 		if len(pad) >= 2 {
-			return pad[:len(pad)-2] + styleCommentMark.Render("▌") + " "
+			return pad[:len(pad)-2] + m.st.commentMark.Render("▌") + " "
 		}
-		return styleCommentMark.Render("▌") + " "
+		return m.st.commentMark.Render("▌") + " "
 	}
 
 	rows := make([]string, m.height-1)
@@ -93,15 +83,19 @@ func (m model) View() string {
 	}
 
 	if panelW > 0 {
-		// Keep wide lines (code, tables) from bleeding into the panel.
+		// Keep wide lines (code, tables) from bleeding into the gap or panel.
+		textRight := leftPad + ctxW
 		for i := range rows {
-			rows[i] = ansi.Truncate(rows[i], avail-1, "")
+			rows[i] = ansi.Truncate(rows[i], textRight, "")
 		}
-		m.renderCommentPanel(rows, lines, lineRow, avail, panelW)
+		m.renderCommentPanel(rows, lines, lineRow, panelLeft, panelW)
 	}
 
 	if m.picker {
 		m.overlayPicker(rows)
+	}
+	if m.themePicker {
+		m.overlayThemePicker(rows)
 	}
 	if m.editing && panelW == 0 {
 		m.overlayEditor(rows)
@@ -125,7 +119,7 @@ func (m model) renderLine(l line, curPara int, current bool, ctxW int) string {
 	// carries the background so it reads as one continuous bar.
 	apply := func(s lipgloss.Style) lipgloss.Style {
 		if cursorline {
-			return s.Background(cursorLineBG)
+			return s.Background(m.st.cursorLine)
 		}
 		return s
 	}
@@ -136,18 +130,25 @@ func (m model) renderLine(l line, curPara int, current bool, ctxW int) string {
 	used := 0
 	write := func(s lipgloss.Style, text string) {
 		b.WriteString(apply(s).Render(text))
-		used += utf8.RuneCountInString(text)
+		used += dispWidth(text)
 	}
 	// writeSel renders selected text with the selection background, which
 	// wins over the cursor-line background.
 	writeSel := func(s lipgloss.Style, text string) {
-		b.WriteString(s.Background(selectionBG).Render(text))
-		used += utf8.RuneCountInString(text)
+		b.WriteString(s.Background(m.st.selection).Render(text))
+		used += dispWidth(text)
+	}
+	// writeFocus renders the focal word with its own highlight intact: the
+	// focus style already carries a background, so it must bypass apply (which
+	// would paint the cursor-line bar over it) and any selection beneath it.
+	writeFocus := func(s lipgloss.Style, text string) {
+		b.WriteString(s.Render(text))
+		used += dispWidth(text)
 	}
 
-	marker := styleMarker
+	marker := m.st.marker
 	if !bright {
-		marker = styleFar
+		marker = m.st.far
 	}
 	switch info.kind {
 	case paraList:
@@ -164,7 +165,7 @@ func (m model) renderLine(l line, curPara int, current bool, ctxW int) string {
 		// Words sit at fixed columns; gaps carry the table grid, and the
 		// whole header row is underlined to double as the header divider.
 		header := info.kind == paraTable && info.header && m.doc.words[l.from].row == 0
-		gap, grid := lipgloss.NewStyle(), styleGrid
+		gap, grid := lipgloss.NewStyle(), m.st.grid
 		if header {
 			gap, grid = gap.Underline(true), grid.Underline(true)
 		}
@@ -183,9 +184,12 @@ func (m model) renderLine(l line, curPara int, current bool, ctxW int) string {
 			w := m.doc.words[i]
 			gapTo(w.col)
 			st := m.wordStyle(w, info, bright, i == m.idx, header)
-			if selOk && i >= lo && i <= hi {
+			switch {
+			case i == m.idx && m.style.WordHighlight:
+				writeFocus(st, w.text)
+			case selOk && i >= lo && i <= hi:
 				writeSel(st, w.text)
-			} else {
+			default:
 				write(st, w.text)
 			}
 		}
@@ -204,9 +208,12 @@ func (m model) renderLine(l line, curPara int, current bool, ctxW int) string {
 			}
 			w := m.doc.words[i]
 			st := m.wordStyle(w, info, bright, i == m.idx, false)
-			if sel {
+			switch {
+			case i == m.idx && m.style.WordHighlight:
+				writeFocus(st, w.text)
+			case sel:
 				writeSel(st, w.text)
-			} else {
+			default:
 				write(st, w.text)
 			}
 		}
@@ -224,19 +231,19 @@ func (m model) wordStyle(w word, info paraInfo, bright, focus, underline bool) l
 	var s lipgloss.Style
 	switch {
 	case focus && m.style.WordHighlight:
-		s = styleFocus
+		s = m.st.focus
 	case info.kind == paraHeading && bright:
-		s = styleHead
+		s = m.st.head
 	case info.kind == paraHeading:
-		s = styleFarHead
+		s = m.st.farHead
 	case !bright:
-		s = styleFar
+		s = m.st.far
 	case info.kind == paraCode || w.style.code:
-		s = styleCode
+		s = m.st.code
 	case w.style.link:
-		s = styleLink
+		s = m.st.link
 	default:
-		s = styleRead
+		s = m.st.read
 	}
 	if w.style.bold {
 		s = s.Bold(true)
@@ -264,7 +271,7 @@ func (m model) overlayPicker(rows []string) {
 		{"Dim other paragraphs", m.style.DimOthers},
 	}
 
-	body := []string{stylePickerSel.Render("Style"), ""}
+	body := []string{m.st.pickerSel.Render("Style"), ""}
 	for i, it := range items {
 		box := "[ ]"
 		if it.on {
@@ -272,14 +279,49 @@ func (m model) overlayPicker(rows []string) {
 		}
 		text := fmt.Sprintf("%s %s", box, it.label)
 		if i == m.pickerSel {
-			body = append(body, stylePickerSel.Render("▸ "+text))
+			body = append(body, m.st.pickerSel.Render("▸ "+text))
 		} else {
 			body = append(body, "  "+text)
 		}
 	}
-	body = append(body, "", styleStatus.Render("space toggle · esc close"))
+	body = append(body, "", m.st.status.Render("space toggle · esc close"))
 
-	panel := stylePicker.Render(strings.Join(body, "\n"))
+	panel := m.st.picker.Render(strings.Join(body, "\n"))
+	plines := strings.Split(panel, "\n")
+	top := max((len(rows)-len(plines))/2, 0)
+	for i, pl := range plines {
+		r := top + i
+		if r >= len(rows) {
+			break
+		}
+		pad := max((m.width-lipgloss.Width(pl))/2, 0)
+		rows[r] = strings.Repeat(" ", pad) + pl
+	}
+}
+
+// overlayThemePicker lists the themes, each drawn in its own colors as a live
+// preview, with the active one marked. Moving the cursor switches the theme.
+func (m model) overlayThemePicker(rows []string) {
+	nameW := 0
+	for _, t := range themes {
+		nameW = max(nameW, len(t.name))
+	}
+
+	body := []string{m.st.pickerSel.Render("Theme"), ""}
+	for i, t := range themes {
+		ts := newStyles(t)
+		name := ts.read.Render(t.name + strings.Repeat(" ", nameW-len(t.name)))
+		swatch := ts.commentMark.Render("●") + ts.link.Render("●") + ts.code.Render("●") + " " + ts.focus.Render(" A ")
+		row := name + "  " + swatch
+		if i == m.themeIdx {
+			body = append(body, m.st.pickerSel.Render("▸ ")+row)
+		} else {
+			body = append(body, "  "+row)
+		}
+	}
+	body = append(body, "", m.st.status.Render("j/k preview · esc close"))
+
+	panel := m.st.picker.Render(strings.Join(body, "\n"))
 	plines := strings.Split(panel, "\n")
 	top := max((len(rows)-len(plines))/2, 0)
 	for i, pl := range plines {
@@ -313,7 +355,7 @@ func (m model) statusBar() string {
 		// Only echo the note when the panel isn't there to show it.
 		parts = append(parts, "💬 "+oneLine(m.comments[m.commentAt(m.idx)].Body))
 	default:
-		parts = append(parts, "hjkl move · {} para · n/p section · ⇧ select · c comment · x export · s style · q quit")
+		parts = append(parts, "hjkl move · {} para · n/b section · ⇧ select · c comment · p path · x export · s style · t theme · q quit")
 	}
 	return m.centerStatus(strings.Join(parts, " · "))
 }
@@ -326,7 +368,7 @@ func (m model) centerStatus(status string) string {
 	if pad := (m.width - utf8.RuneCountInString(status)) / 2; pad > 0 {
 		status = strings.Repeat(" ", pad) + status
 	}
-	return styleStatus.Render(status)
+	return m.st.status.Render(status)
 }
 
 // overlayEditor draws the comment composer over the center of the view: the
@@ -341,15 +383,15 @@ func (m model) overlayEditor(rows []string) {
 		title, hint = "Edit comment", "ctrl+s save (empty deletes) · esc cancel"
 	}
 
-	body := []string{stylePickerSel.Render(title), ""}
-	body = append(body, styleFar.Render("> "+truncate(strings.ReplaceAll(e.quote, "\n", " "), w)))
+	body := []string{m.st.pickerSel.Render(title), ""}
+	body = append(body, m.st.far.Render("> "+truncate(strings.ReplaceAll(e.quote, "\n", " "), w)))
 	body = append(body, "")
 	for r, line := range e.lines {
-		body = append(body, renderEditorLine(line, r == e.row, e.col))
+		body = append(body, m.renderEditorLine(line, r == e.row, e.col))
 	}
-	body = append(body, "", styleStatus.Render(hint))
+	body = append(body, "", m.st.status.Render(hint))
 
-	panel := stylePicker.Width(w).Render(strings.Join(body, "\n"))
+	panel := m.st.picker.Width(w).Render(strings.Join(body, "\n"))
 	plines := strings.Split(panel, "\n")
 	top := max((len(rows)-len(plines))/2, 0)
 	for i, pl := range plines {
@@ -362,17 +404,17 @@ func (m model) overlayEditor(rows []string) {
 	}
 }
 
-// renderEditorLine renders one body line, drawing a reverse-video block at the
-// cursor when this is the cursor line.
-func renderEditorLine(line []rune, cursor bool, col int) string {
+// renderEditorLine renders one body line, drawing the cursor block at the
+// cursor column when this is the cursor line.
+func (m model) renderEditorLine(line []rune, cursor bool, col int) string {
 	if !cursor {
 		return string(line)
 	}
 	c := min(col, len(line))
 	if c == len(line) {
-		return string(line) + styleFocus.Render(" ")
+		return string(line) + m.st.focus.Render(" ")
 	}
-	return string(line[:c]) + styleFocus.Render(string(line[c])) + string(line[c+1:])
+	return string(line[:c]) + m.st.focus.Render(string(line[c])) + string(line[c+1:])
 }
 
 // truncate shortens s to at most w runes, marking elision with an ellipsis.
@@ -447,11 +489,11 @@ func (m model) renderCommentPanel(rows []string, lines []line, lineRow map[int]i
 // commentCardLines renders a saved comment: a dimmed quote header over the
 // wrapped body, brighter when the focal word sits inside it.
 func (m model) commentCardLines(c comment, w int, focused bool) []string {
-	body := styleFar
+	body := m.st.far
 	if focused {
-		body = styleRead
+		body = m.st.read
 	}
-	out := []string{styleCommentMark.Render("▌") + " " + styleFar.Italic(true).Render(truncate(oneLine(c.Quote), w))}
+	out := []string{m.st.commentMark.Render("▌") + " " + m.st.far.Italic(true).Render(truncate(oneLine(c.Quote), w))}
 	for _, ln := range wrapText(c.Body, w) {
 		out = append(out, "  "+body.Render(ln))
 	}
@@ -466,28 +508,28 @@ func (m model) editorCardLines(w int) []string {
 	if e.editIdx >= 0 {
 		title, hint = "Edit comment", "ctrl+s save · esc cancel · empty deletes"
 	}
-	out := []string{stylePickerSel.Render("▌") + " " + stylePickerSel.Render(title)}
-	out = append(out, "  "+styleFar.Italic(true).Render(truncate(oneLine(e.quote), w)))
+	out := []string{m.st.pickerSel.Render("▌") + " " + m.st.pickerSel.Render(title)}
+	out = append(out, "  "+m.st.far.Italic(true).Render(truncate(oneLine(e.quote), w)))
 	for r, line := range e.lines {
-		for _, seg := range wrapEditorLine(line, r == e.row, e.col, w) {
+		for _, seg := range m.wrapEditorLine(line, r == e.row, e.col, w) {
 			out = append(out, "  "+seg)
 		}
 	}
 	for _, ln := range wrapText(hint, w) {
-		out = append(out, "  "+styleStatus.Render(ln))
+		out = append(out, "  "+m.st.status.Render(ln))
 	}
 	return out
 }
 
 // wrapEditorLine character-wraps one logical editor line to width w, drawing
-// the reverse-video cursor at cursorCol when this is the cursor line. Character
+// the cursor block at cursorCol when this is the cursor line. Character
 // wrapping (rather than word) keeps the cursor's position unambiguous so it is
 // always on screen, even in the narrow panel.
-func wrapEditorLine(line []rune, cursor bool, cursorCol, w int) []string {
+func (m model) wrapEditorLine(line []rune, cursor bool, cursorCol, w int) []string {
 	w = max(w, 1)
 	if len(line) == 0 {
 		if cursor {
-			return []string{styleFocus.Render(" ")}
+			return []string{m.st.focus.Render(" ")}
 		}
 		return []string{""}
 	}
@@ -498,7 +540,7 @@ func wrapEditorLine(line []rune, cursor bool, cursorCol, w int) []string {
 		seg := line[start:end]
 		if cursor && cursorCol >= start && cursorCol < end {
 			c := cursorCol - start
-			out = append(out, string(seg[:c])+styleFocus.Render(string(seg[c]))+string(seg[c+1:]))
+			out = append(out, string(seg[:c])+m.st.focus.Render(string(seg[c]))+string(seg[c+1:]))
 		} else {
 			out = append(out, string(seg))
 		}
@@ -507,9 +549,9 @@ func wrapEditorLine(line []rune, cursor bool, cursorCol, w int) []string {
 	// final segment or, if that segment is full, wraps to a fresh line.
 	if cursor && cursorCol >= len(line) {
 		if len(line)%w == 0 {
-			out = append(out, styleFocus.Render(" "))
+			out = append(out, m.st.focus.Render(" "))
 		} else {
-			out[len(out)-1] += styleFocus.Render(" ")
+			out[len(out)-1] += m.st.focus.Render(" ")
 		}
 	}
 	return out

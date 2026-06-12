@@ -8,7 +8,13 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/charmbracelet/x/ansi"
 )
+
+// dispWidth is the terminal display width of s. Column math must use this,
+// not the rune count: wide runes (CJK, emoji) occupy two cells.
+func dispWidth(s string) int { return ansi.StringWidth(s) }
 
 // wordStyle carries the inline markdown styling of a single word.
 type wordStyle struct {
@@ -215,7 +221,7 @@ func (p *mdParser) flushCode() {
 	if len(p.codeWords) > 0 {
 		width := 0
 		for _, w := range p.codeWords {
-			width = max(width, w.col+utf8.RuneCountInString(w.text))
+			width = max(width, w.col+dispWidth(w.text))
 		}
 		p.paras = append(p.paras, rawPara{
 			words: p.codeWords,
@@ -251,20 +257,22 @@ func (p *mdParser) addCodeLine(line string) {
 	col, startCol := 0, 0
 	flush := func() {
 		if len(cur) > 0 {
-			p.codeWords = append(p.codeWords, word{text: string(cur), col: startCol, row: p.codeRow})
+			text := string(cur)
+			p.codeWords = append(p.codeWords, word{text: text, col: startCol, row: p.codeRow})
+			col = startCol + dispWidth(text)
 			cur = nil
 		}
 	}
 	for _, r := range line {
 		if unicode.IsSpace(r) {
 			flush()
+			col++
 		} else {
 			if len(cur) == 0 {
 				startCol = col
 			}
 			cur = append(cur, r)
 		}
-		col++
 	}
 	flush()
 	p.codeRow++
@@ -321,7 +329,7 @@ func buildTable(lines []string) rawPara {
 				w.col = col
 				w.row = r
 				words = append(words, w)
-				col += utf8.RuneCountInString(w.text) + 1
+				col += dispWidth(w.text) + 1
 			}
 		}
 	}
@@ -353,7 +361,7 @@ func cellWidth(cell []word) int {
 		if i > 0 {
 			w++
 		}
-		w += utf8.RuneCountInString(wd.text)
+		w += dispWidth(wd.text)
 	}
 	return w
 }

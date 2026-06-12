@@ -15,6 +15,7 @@ type state struct {
 	// Style is a pointer so a missing key keeps the defaults rather than
 	// reading as all-off.
 	Style *styleConfig        `json:"style,omitempty"`
+	Theme string              `json:"theme,omitempty"`
 	Docs  map[string]docState `json:"docs"`
 }
 

@@ -48,11 +48,13 @@ Other files are read as plain text with paragraphs split on blank lines.
 | `⇧`+move / `H``J``K``L` | extend a selection                          |
 | `c`                 | comment on the selection (or current line)      |
 | `x`                 | export all comments to the clipboard            |
+| `p`                 | copy the file's path (relative to the git root) |
 | `{` / `}`           | paragraph start / next paragraph                |
-| `n` / `p`           | next / previous section (markdown headings)     |
+| `n` / `b`           | next / previous section (markdown headings)     |
 | `g` / `G`           | top / end of document                           |
 | `+` / `-`           | wider / narrower text column                    |
 | `s`                 | style picker                                    |
+| `t`                 | theme picker                                    |
 | `q`                 | quit                                            |
 
 Up/down move between *wrapped* lines, like a text editor: the focus lands on
@@ -67,6 +69,25 @@ Press `s` to open the style picker (`j`/`k` select, `space` toggles,
 - **Word highlight** — reverse-video highlight on the focal word
 - **Line highlight** — a background bar across the current line
 - **Dim other paragraphs** — non-current paragraphs render dimmed
+
+## Themes
+
+Press `t` to open the theme picker (`j`/`k` to move, which previews the theme
+live; `esc`/`enter` closes). The chosen theme persists across runs. Bundled
+themes:
+
+- **Default** (monocle's original look)
+- **Nord**
+- **Dracula**
+- **Gruvbox Dark**
+- **Solarized Dark** / **Solarized Light**
+- **Tokyo Night**
+- **Catppuccin Mocha**
+- **One Dark**
+- **Monokai**
+
+Colors are truecolor where the terminal supports it, degrading gracefully to
+the 256-color palette otherwise.
 
 ## Comments
 
@@ -102,8 +123,8 @@ clarify that esc also exits the reader when nothing is selected
 
 ## State
 
-Reading position, style choices, and column width persist across runs in
-`~/.config/monocle/state.json` (honoring `$XDG_CONFIG_HOME`). Reopening a
+Reading position, style choices, theme, and column width persist across runs
+in `~/.config/monocle/state.json` (honoring `$XDG_CONFIG_HOME`). Reopening a
 file resumes where you left off; finished documents — or ones whose content
 changed since — start over from the beginning.
 

@@ -169,6 +169,54 @@ func TestTableLayout(t *testing.T) {
 	}
 }
 
+func TestTableWideRunes(t *testing.T) {
+	doc := writeDoc(t, "t.md", `| Name | Note |
+|------|------|
+| ✅ done | ok |
+| 漢字 | x |
+`)
+	info := doc.paras[0]
+	// Column widths follow display width, not rune count: ✅ occupies two
+	// cells and 漢字 four, so "✅ done" is 7 wide. The separator then sits
+	// at 8 and the second column starts at 10.
+	if len(info.sepCols) != 1 || info.sepCols[0] != 8 {
+		t.Errorf("sepCols = %v, want [8]", info.sepCols)
+	}
+	if info.width != 14 {
+		t.Errorf("width = %d, want 14", info.width)
+	}
+	for _, tc := range []struct {
+		text string
+		col  int
+	}{
+		{"✅", 0},
+		{"done", 3},
+		{"漢字", 0},
+		{"Note", 10},
+		{"ok", 10},
+		{"x", 10},
+	} {
+		w := findWord(doc, tc.text)
+		if w == nil {
+			t.Fatalf("word %q missing", tc.text)
+		}
+		if w.col != tc.col {
+			t.Errorf("%q at col %d, want %d", tc.text, w.col, tc.col)
+		}
+	}
+}
+
+func TestCodeWideRunes(t *testing.T) {
+	doc := writeDoc(t, "c.md", "```\n漢字 x\n```\n")
+	// 漢字 displays 4 wide, so "x" starts at column 5 and the row is 6 wide.
+	if w := findWord(doc, "x"); w == nil || w.col != 5 {
+		t.Fatalf("x at %+v, want col 5", w)
+	}
+	if got := doc.paras[0].width; got != 6 {
+		t.Errorf("width = %d, want 6", got)
+	}
+}
+
 func TestCodeBlockPreservesLayout(t *testing.T) {
 	doc := writeDoc(t, "c.md", "```go\nfunc main() {\n\tx := 1\n}\n\nvar y int\n```\n")
 	if len(doc.paras) != 2 {

@@ -30,6 +30,7 @@ func main() {
 	if st.Style != nil {
 		m.style = *st.Style
 	}
+	m.setTheme(themeIndex(st.Theme))
 
 	final, err := tea.NewProgram(m, tea.WithAltScreen()).Run()
 	if err != nil {
@@ -39,6 +40,7 @@ func main() {
 
 	if fm, ok := final.(model); ok {
 		st.Style = &fm.style
+		st.Theme = themes[fm.themeIdx].name
 		st.setProgress(key, fm.idx, len(doc.words))
 		if err := st.save(); err != nil {
 			fmt.Fprintln(os.Stderr, "monocle: saving state:", err)

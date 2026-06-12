@@ -28,21 +28,31 @@ type model struct {
 	path      string // source path, for export labels
 	idx       int    // focal word
 	style     styleConfig
-	picker    bool // style picker overlay open
+	st        styles // active theme's styles
+	picker    bool   // style picker overlay open
 	pickerSel int
 	width     int
 	height    int
 
-	comments  []comment // for the current document, sorted by Start
-	selecting bool      // shift-select in progress
-	anchor    int       // selection anchor word
-	editing   bool      // comment editor overlay open
-	editor    commentEditor
-	flash     string // transient status message, cleared on next key
+	comments    []comment // for the current document, sorted by Start
+	selecting   bool      // shift-select in progress
+	anchor      int       // selection anchor word
+	editing     bool      // comment editor overlay open
+	editor      commentEditor
+	flash       string // transient status message, cleared on next key
+	themeIdx    int    // index into themes
+	themePicker bool   // theme picker overlay open
 }
 
 func newModel(doc *document) model {
-	return model{doc: doc, style: defaultStyleConfig()}
+	return model{doc: doc, style: defaultStyleConfig(), st: defaultStyles()}
+}
+
+// setTheme switches the active theme (and its derived styles) by index,
+// clamped to the available themes.
+func (m *model) setTheme(i int) {
+	m.themeIdx = min(max(i, 0), len(themes)-1)
+	m.st = newStyles(themes[m.themeIdx])
 }
 
 // selRange returns the inclusive word span of the active selection.
@@ -159,6 +169,16 @@ func (m model) exportToClipboard() string {
 	return fmt.Sprintf("Copied %d comments to clipboard", n)
 }
 
+// copyPath copies the document's path (relative to the git repo root when
+// there is one) to the clipboard, returning a status message.
+func (m model) copyPath() string {
+	p := repoRelPath(m.path)
+	if err := copyToClipboard(p); err != nil {
+		return "Clipboard error: " + err.Error()
+	}
+	return "Copied path: " + p
+}
+
 func (m model) Init() tea.Cmd {
 	return nil
 }
@@ -174,12 +194,20 @@ func (m model) ctxW() int {
 		}
 		return 72
 	}
-	avail := m.width - m.commentPanelW()
+	panel := m.commentPanelW()
+	avail := m.width - panel
+	if panel > 0 {
+		avail -= commentGap // leave breathing room between text and panel
+	}
 	if m.style.Width > 0 {
 		return max(min(m.style.Width, avail-2), 10)
 	}
 	return max(min(avail-8, 72), 10)
 }
+
+// commentGap is the blank columns between the text column and the comment
+// panel, so the notes sit close to their context without crowding it.
+const commentGap = 4
 
 // commentPanelW is the width of the right-hand comment margin, or 0 when it
 // isn't shown — there are no comments and nothing is being edited, or the
@@ -262,6 +290,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		if m.themePicker {
+			// Moving the cursor previews the theme live; it sticks on close.
+			switch msg.String() {
+			case "ctrl+c":
+				return m, tea.Quit
+			case "q", "esc", "t", "enter", " ":
+				m.themePicker = false
+			case "up", "k":
+				m.setTheme(m.themeIdx - 1)
+			case "down", "j":
+				m.setTheme(m.themeIdx + 1)
+			}
+			return m, nil
+		}
 
 		// Shift+motion (or capital H/J/K/L) extends a selection from the
 		// anchor; everything else falls through and collapses it.
@@ -303,8 +345,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.flash = m.exportToClipboard()
 			return m, nil
 
+		case "p":
+			m.flash = m.copyPath()
+			return m, nil
+
 		case "s":
 			m.picker = true
+			return m, nil
+
+		case "t":
+			m.themePicker = true
 			return m, nil
 
 		case "+", "=":
@@ -354,7 +404,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.seek(m.doc.sections[sec+1].start)
 			}
 
-		case "p":
+		case "b":
 			sec := m.doc.words[m.idx].section
 			if sec < 0 {
 				break

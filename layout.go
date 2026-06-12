@@ -1,7 +1,5 @@
 package main
 
-import "unicode/utf8"
-
 // line is one wrapped visual line: words [from,to) of a single paragraph.
 type line struct {
 	from, to int
@@ -33,7 +31,7 @@ func layoutLines(d *document, width int) []line {
 		wrapW := max(width-info.indent(), 1)
 		from, w := start, 0
 		for i := start; i < end; i++ {
-			wl := utf8.RuneCountInString(d.words[i].text)
+			wl := dispWidth(d.words[i].text)
 			if w > 0 && w+1+wl > wrapW {
 				lines = append(lines, line{from, i, p})
 				from, w = i, 0
@@ -72,7 +70,7 @@ func columnOf(d *document, l line, idx int) int {
 	}
 	col := info.indent()
 	for i := l.from; i < idx; i++ {
-		col += utf8.RuneCountInString(d.words[i].text) + 1
+		col += dispWidth(d.words[i].text) + 1
 	}
 	return col
 }
@@ -93,7 +91,7 @@ func wordAtColumn(d *document, l line, col int) int {
 		}
 		best = i
 		if !pre {
-			start += utf8.RuneCountInString(d.words[i].text) + 1
+			start += dispWidth(d.words[i].text) + 1
 		}
 	}
 	return best

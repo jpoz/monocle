@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -219,8 +221,9 @@ func TestWrapText(t *testing.T) {
 }
 
 func TestWrapEditorLineCursor(t *testing.T) {
+	m := model{st: defaultStyles()}
 	// A line longer than the width wraps, and the cursor sits inside it.
-	segs := wrapEditorLine([]rune("abcdefgh"), true, 3, 4)
+	segs := m.wrapEditorLine([]rune("abcdefgh"), true, 3, 4)
 	if len(segs) != 2 {
 		t.Fatalf("want 2 segments, got %d: %q", len(segs), segs)
 	}
@@ -228,12 +231,12 @@ func TestWrapEditorLineCursor(t *testing.T) {
 		t.Errorf("wrapped text changed: %q", ansi.Strip(strings.Join(segs, "")))
 	}
 	// Cursor just past the end of a full-width line wraps to a fresh segment.
-	segs = wrapEditorLine([]rune("abcd"), true, 4, 4)
+	segs = m.wrapEditorLine([]rune("abcd"), true, 4, 4)
 	if len(segs) != 2 || ansi.Strip(segs[1]) != " " {
 		t.Errorf("trailing cursor should wrap to a new line: %q", segs)
 	}
 	// An empty cursor line still shows a cursor block.
-	if segs := wrapEditorLine(nil, true, 0, 4); len(segs) != 1 || ansi.Strip(segs[0]) != " " {
+	if segs := m.wrapEditorLine(nil, true, 0, 4); len(segs) != 1 || ansi.Strip(segs[0]) != " " {
 		t.Errorf("empty cursor line = %q", segs)
 	}
 }
@@ -248,6 +251,53 @@ func TestPlaceAt(t *testing.T) {
 	}
 }
 
+func TestRepoRelPath(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(root, "docs", "readme.md")
+	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := repoRelPath(file), filepath.Join("docs", "readme.md"); got != want {
+		t.Errorf("repoRelPath in repo = %q, want %q", got, want)
+	}
+
+	// Outside any repo, the absolute path is returned.
+	outside := filepath.Join(t.TempDir(), "plain.txt")
+	if err := os.WriteFile(outside, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := repoRelPath(outside); !filepath.IsAbs(got) {
+		t.Errorf("repoRelPath outside repo = %q, want an absolute path", got)
+	}
+}
+
+func TestBackSectionKey(t *testing.T) {
+	doc := writeDoc(t, "c.md", "# One\n\nalpha beta\n\n# Two\n\ngamma delta\n")
+	m := newModel(doc)
+	m.width, m.height = 80, 24
+	m.idx = 5 // "delta", in the second section
+
+	press := func(k string) {
+		next, _ := m.Update(keyMsg(k))
+		m = next.(model)
+	}
+	// b rewinds to the section start, then to the previous section.
+	press("b")
+	if m.idx != 3 {
+		t.Fatalf("first b -> %d, want 3 (start of section Two)", m.idx)
+	}
+	press("b")
+	if m.idx != 0 {
+		t.Fatalf("second b -> %d, want 0 (section One)", m.idx)
+	}
+}
+
 func TestCommentPanelInView(t *testing.T) {
 	doc := writeDoc(t, "v.md", "alpha beta gamma delta epsilon zeta eta theta")
 	m := newModel(doc)
@@ -259,11 +309,13 @@ func TestCommentPanelInView(t *testing.T) {
 	if !strings.Contains(out, "a side note") {
 		t.Errorf("rendered view should show the comment in the panel:\n%s", out)
 	}
-	// The note must sit to the right of where the text wraps (the panel),
-	// never on column zero.
+	// The note must sit in the right-hand panel, at or past the text column's
+	// right edge — never inside the text itself.
+	ctxW, panelW := m.ctxW(), m.commentPanelW()
+	textRight := max((m.width-(ctxW+commentGap+panelW))/2, 0) + ctxW
 	for _, ln := range strings.Split(out, "\n") {
-		if i := strings.Index(ln, "a side note"); i >= 0 && i < m.width-m.commentPanelW() {
-			t.Errorf("comment rendered inside the text column at %d:\n%q", i, ln)
+		if i := strings.Index(ln, "a side note"); i >= 0 && i < textRight {
+			t.Errorf("comment rendered inside the text column at %d (text ends at %d):\n%q", i, textRight, ln)
 		}
 	}
 }

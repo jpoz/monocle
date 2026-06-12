@@ -119,6 +119,29 @@ func copyToClipboard(s string) error {
 	return cmd.Run()
 }
 
+// repoRelPath returns path relative to the enclosing git repository's root,
+// or the cleaned absolute path when the file isn't inside a repo. The repo is
+// found by walking up for a .git entry, so git need not be installed.
+func repoRelPath(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return path
+	}
+	for dir := filepath.Dir(abs); ; {
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			if rel, err := filepath.Rel(dir, abs); err == nil {
+				return rel
+			}
+			return abs
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir { // reached the filesystem root
+			return abs
+		}
+		dir = parent
+	}
+}
+
 func clipboardCmd() (*exec.Cmd, error) {
 	switch runtime.GOOS {
 	case "darwin":
