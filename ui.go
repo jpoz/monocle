@@ -243,14 +243,15 @@ func (m *model) seek(idx int) {
 // moveLine moves the focus to the adjacent visual line, landing on the
 // word nearest the current column, like a text editor cursor.
 func (m *model) moveLine(delta int) {
-	lines := layoutLines(m.doc, m.ctxW())
+	w := m.ctxW()
+	lines := layoutLines(m.doc, w)
 	li := lineIndex(lines, m.idx)
 	ti := min(max(li+delta, 0), len(lines)-1)
 	if ti == li {
 		return
 	}
-	col := columnOf(m.doc, lines[li], m.idx)
-	m.idx = wordAtColumn(m.doc, lines[ti], col)
+	col := columnOf(m.doc, lines[li], m.idx, w)
+	m.idx = wordAtColumn(m.doc, lines[ti], col, w)
 }
 
 func (m *model) togglePickerItem() {

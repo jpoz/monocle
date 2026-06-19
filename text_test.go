@@ -3,10 +3,12 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func writeDoc(t *testing.T, name, src string) *document {
@@ -206,6 +208,71 @@ func TestTableWideRunes(t *testing.T) {
 	}
 }
 
+func TestTableWrapsToWidth(t *testing.T) {
+	doc := writeDoc(t, "t.md", `| # | Finding | Severity |
+|---|---------|----------|
+| 1 | the first finding has a great many words that cannot possibly fit on one screen row | Critical |
+| 2 | short | High |
+`)
+	const w = 40
+	g := layoutTable(doc, 0, w)
+	if g.width > w {
+		t.Errorf("table width = %d, want <= %d", g.width, w)
+	}
+	if g.heights[0] != 1 || g.heights[1] < 2 || g.heights[2] != 1 {
+		t.Errorf("heights = %v, want [1, >=2, 1]", g.heights)
+	}
+	// No word may cross a column separator or the table edge.
+	for i, word := range doc.words {
+		lo, hi := g.col[i], g.col[i]+dispWidth(word.text)
+		for _, sc := range g.sepCols {
+			if sc >= lo && sc < hi {
+				t.Errorf("%q spans [%d,%d) across separator at %d", word.text, lo, hi, sc)
+			}
+		}
+		if hi > g.width {
+			t.Errorf("%q ends at %d, past table width %d", word.text, hi, g.width)
+		}
+	}
+
+	// Vertical movement crosses wrapped rows one table row at a time.
+	m := newModel(doc)
+	m.width, m.height = 60, 24
+	for i := range doc.words {
+		if doc.words[i].text == "Finding" {
+			m.idx = i
+		}
+	}
+	m.moveLine(1)
+	if got := doc.words[m.idx].text; got != "the" {
+		t.Errorf("down from Finding landed on %q, want the", got)
+	}
+	m.moveLine(1)
+	if got := doc.words[m.idx].text; got != "short" {
+		t.Errorf("down again landed on %q, want short", got)
+	}
+
+	// Every rendered screen row draws the grid at the same display columns.
+	m.style = styleConfig{}
+	ctxW := m.ctxW()
+	gr := layoutTable(doc, 0, ctxW)
+	for _, l := range layoutLines(doc, ctxW) {
+		for _, seg := range m.renderTableRows(l, 0, false, ctxW) {
+			var got []int
+			col := 0
+			for _, r := range ansi.Strip(seg) {
+				if r == '│' {
+					got = append(got, col)
+				}
+				col += dispWidth(string(r))
+			}
+			if !slices.Equal(got, gr.sepCols) {
+				t.Errorf("separators at %v, want %v in %q", got, gr.sepCols, ansi.Strip(seg))
+			}
+		}
+	}
+}
+
 func TestCodeWideRunes(t *testing.T) {
 	doc := writeDoc(t, "c.md", "```\n漢字 x\n```\n")
 	// 漢字 displays 4 wide, so "x" starts at column 5 and the row is 6 wide.
@@ -269,7 +336,7 @@ func TestListsAndQuotes(t *testing.T) {
 	}
 	// Wrapped lines account for the marker indent in column math.
 	lines := layoutLines(doc, 72)
-	if got := columnOf(doc, lines[0], 0); got != 2 {
+	if got := columnOf(doc, lines[0], 0, 72); got != 2 {
 		t.Errorf("first list word column = %d, want 2", got)
 	}
 }

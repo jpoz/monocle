@@ -55,6 +55,16 @@ func (m model) View() string {
 	// the comment panel can align each note to its anchor.
 	lineRow := map[int]int{}
 
+	// render yields the screen rows of one line: a single row for most
+	// lines, several for a table row whose cells wrap at this width.
+	render := func(j int) []string {
+		l := lines[j]
+		if m.doc.paras[l.para].kind == paraTable {
+			return m.renderTableRows(l, curPara, j == li, ctxW)
+		}
+		return []string{m.renderLine(l, curPara, j == li, ctxW)}
+	}
+
 	// Current line and everything below.
 	r := centerRow
 	for j := li; j < len(lines) && r < len(rows); j++ {
@@ -64,9 +74,14 @@ func (m model) View() string {
 				break
 			}
 		}
-		rows[r] = prefix(lines[j]) + m.renderLine(lines[j], curPara, j == li, ctxW)
 		lineRow[j] = r
-		r++
+		for _, seg := range render(j) {
+			if r >= len(rows) {
+				break
+			}
+			rows[r] = prefix(lines[j]) + seg
+			r++
+		}
 	}
 	// Everything above.
 	r = centerRow - 1
@@ -77,9 +92,15 @@ func (m model) View() string {
 				break
 			}
 		}
-		rows[r] = prefix(lines[j]) + m.renderLine(lines[j], curPara, false, ctxW)
-		lineRow[j] = r
-		r--
+		segs := render(j)
+		top := r - len(segs) + 1
+		for k, seg := range segs {
+			if rr := top + k; rr >= 0 && rr < len(rows) {
+				rows[rr] = prefix(lines[j]) + seg
+			}
+		}
+		lineRow[j] = max(top, 0)
+		r = top - 1
 	}
 
 	if panelW > 0 {
@@ -110,41 +131,81 @@ func (m model) View() string {
 	return strings.Join(rows, "\n")
 }
 
+// lineWriter accumulates one rendered screen row, tracking the display
+// column so grid separators and padding land where the layout put them.
+type lineWriter struct {
+	b    strings.Builder
+	used int
+	bar  lipgloss.Color // cursor-line background painted under every segment
+	sel  lipgloss.Color // selection background
+}
+
+// newLineWriter starts a screen row; on the cursor line every segment,
+// including the gaps between words, carries the background so it reads as
+// one continuous bar.
+func (m model) newLineWriter(cursorline bool) *lineWriter {
+	lw := &lineWriter{sel: m.st.selection}
+	if cursorline {
+		lw.bar = m.st.cursorLine
+	}
+	return lw
+}
+
+func (w *lineWriter) write(s lipgloss.Style, text string) {
+	if w.bar != "" {
+		s = s.Background(w.bar)
+	}
+	w.b.WriteString(s.Render(text))
+	w.used += dispWidth(text)
+}
+
+// writeSel renders selected text with the selection background, which
+// wins over the cursor-line background.
+func (w *lineWriter) writeSel(s lipgloss.Style, text string) {
+	w.b.WriteString(s.Background(w.sel).Render(text))
+	w.used += dispWidth(text)
+}
+
+// writeFocus renders the focal word with its own highlight intact: the
+// focus style already carries a background, so it must bypass the
+// cursor-line bar and any selection beneath it.
+func (w *lineWriter) writeFocus(s lipgloss.Style, text string) {
+	w.b.WriteString(s.Render(text))
+	w.used += dispWidth(text)
+}
+
+// gapTo pads out to display column to, drawing │ at any separator columns
+// crossed on the way.
+func (w *lineWriter) gapTo(to int, sepCols []int, gap, grid lipgloss.Style) {
+	for _, sc := range sepCols {
+		if sc >= w.used && sc < to {
+			w.write(gap, strings.Repeat(" ", sc-w.used))
+			w.write(grid, "│")
+		}
+	}
+	if to > w.used {
+		w.write(gap, strings.Repeat(" ", to-w.used))
+	}
+}
+
+// writeWord renders word i with focus and selection precedence applied.
+func (m model) writeWord(lw *lineWriter, i int, st lipgloss.Style, lo, hi int, selOk bool) {
+	switch {
+	case i == m.idx && m.style.WordHighlight:
+		lw.writeFocus(st, m.doc.words[i].text)
+	case selOk && i >= lo && i <= hi:
+		lw.writeSel(st, m.doc.words[i].text)
+	default:
+		lw.write(st, m.doc.words[i].text)
+	}
+}
+
 func (m model) renderLine(l line, curPara int, current bool, ctxW int) string {
 	info := m.doc.paras[l.para]
 	cursorline := current && m.style.LineHighlight
 	bright := !m.style.DimOthers || l.para == curPara
-
-	// On the cursor line every segment, including the gaps between words,
-	// carries the background so it reads as one continuous bar.
-	apply := func(s lipgloss.Style) lipgloss.Style {
-		if cursorline {
-			return s.Background(m.st.cursorLine)
-		}
-		return s
-	}
-
 	lo, hi, selOk := m.selRange()
-
-	var b strings.Builder
-	used := 0
-	write := func(s lipgloss.Style, text string) {
-		b.WriteString(apply(s).Render(text))
-		used += dispWidth(text)
-	}
-	// writeSel renders selected text with the selection background, which
-	// wins over the cursor-line background.
-	writeSel := func(s lipgloss.Style, text string) {
-		b.WriteString(s.Background(m.st.selection).Render(text))
-		used += dispWidth(text)
-	}
-	// writeFocus renders the focal word with its own highlight intact: the
-	// focus style already carries a background, so it must bypass apply (which
-	// would paint the cursor-line bar over it) and any selection beneath it.
-	writeFocus := func(s lipgloss.Style, text string) {
-		b.WriteString(s.Render(text))
-		used += dispWidth(text)
-	}
+	lw := m.newLineWriter(cursorline)
 
 	marker := m.st.marker
 	if !bright {
@@ -153,76 +214,81 @@ func (m model) renderLine(l line, curPara int, current bool, ctxW int) string {
 	switch info.kind {
 	case paraList:
 		if l.from == m.doc.paraStarts[l.para] {
-			write(marker, info.marker+" ")
+			lw.write(marker, info.marker+" ")
 		} else {
-			write(lipgloss.NewStyle(), strings.Repeat(" ", info.indent()))
+			lw.write(lipgloss.NewStyle(), strings.Repeat(" ", info.indent()))
 		}
 	case paraQuote:
-		write(marker, "▎ ")
+		lw.write(marker, "▎ ")
 	}
 
 	if info.kind.pre() {
-		// Words sit at fixed columns; gaps carry the table grid, and the
-		// whole header row is underlined to double as the header divider.
-		header := info.kind == paraTable && info.header && m.doc.words[l.from].row == 0
-		gap, grid := lipgloss.NewStyle(), m.st.grid
-		if header {
-			gap, grid = gap.Underline(true), grid.Underline(true)
-		}
-		gapTo := func(to int) {
-			for _, sc := range info.sepCols {
-				if sc >= used && sc < to {
-					write(gap, strings.Repeat(" ", sc-used))
-					write(grid, "│")
-				}
-			}
-			if to > used {
-				write(gap, strings.Repeat(" ", to-used))
-			}
-		}
+		// Code: words sit at the fixed columns the source put them at.
 		for i := l.from; i < l.to; i++ {
 			w := m.doc.words[i]
-			gapTo(w.col)
-			st := m.wordStyle(w, info, bright, i == m.idx, header)
-			switch {
-			case i == m.idx && m.style.WordHighlight:
-				writeFocus(st, w.text)
-			case selOk && i >= lo && i <= hi:
-				writeSel(st, w.text)
-			default:
-				write(st, w.text)
-			}
+			lw.gapTo(w.col, nil, lipgloss.NewStyle(), m.st.grid)
+			m.writeWord(lw, i, m.wordStyle(w, info, bright, i == m.idx, false), lo, hi, selOk)
 		}
-		gapTo(info.width)
+		lw.gapTo(info.width, nil, lipgloss.NewStyle(), m.st.grid)
 	} else {
 		for i := l.from; i < l.to; i++ {
-			sel := selOk && i >= lo && i <= hi
 			if i > l.from {
 				// The joining space is selected only when it sits between
 				// two selected words, so the highlight reads continuous.
 				if selOk && i-1 >= lo && i <= hi {
-					writeSel(lipgloss.NewStyle(), " ")
+					lw.writeSel(lipgloss.NewStyle(), " ")
 				} else {
-					write(lipgloss.NewStyle(), " ")
+					lw.write(lipgloss.NewStyle(), " ")
 				}
 			}
 			w := m.doc.words[i]
-			st := m.wordStyle(w, info, bright, i == m.idx, false)
-			switch {
-			case i == m.idx && m.style.WordHighlight:
-				writeFocus(st, w.text)
-			case sel:
-				writeSel(st, w.text)
-			default:
-				write(st, w.text)
-			}
+			m.writeWord(lw, i, m.wordStyle(w, info, bright, i == m.idx, false), lo, hi, selOk)
 		}
 	}
 
-	if cursorline && used < ctxW {
-		write(lipgloss.NewStyle(), strings.Repeat(" ", ctxW-used))
+	if cursorline && lw.used < ctxW {
+		lw.write(lipgloss.NewStyle(), strings.Repeat(" ", ctxW-lw.used))
 	}
-	return b.String()
+	return lw.b.String()
+}
+
+// renderTableRows renders one table row as its screen rows — one when the
+// table fits the view, several when its cells wrap at this width. Gaps
+// carry the column grid on every screen row, and the whole header row is
+// underlined to double as the header divider.
+func (m model) renderTableRows(l line, curPara int, current bool, ctxW int) []string {
+	info := m.doc.paras[l.para]
+	g := layoutTable(m.doc, l.para, ctxW)
+	ps := m.doc.paraStarts[l.para]
+	row := m.doc.words[l.from].row
+	cursorline := current && m.style.LineHighlight
+	bright := !m.style.DimOthers || l.para == curPara
+	header := info.header && row == 0
+	lo, hi, selOk := m.selRange()
+
+	gap, grid := lipgloss.NewStyle(), m.st.grid
+	if header {
+		gap, grid = gap.Underline(true), grid.Underline(true)
+	}
+
+	out := make([]string, 0, g.heights[row])
+	for sub := 0; sub < g.heights[row]; sub++ {
+		lw := m.newLineWriter(cursorline)
+		for i := l.from; i < l.to; i++ {
+			if g.sub[i-ps] != sub {
+				continue
+			}
+			lw.gapTo(g.col[i-ps], g.sepCols, gap, grid)
+			w := m.doc.words[i]
+			m.writeWord(lw, i, m.wordStyle(w, info, bright, i == m.idx, header), lo, hi, selOk)
+		}
+		lw.gapTo(g.width, g.sepCols, gap, grid)
+		if cursorline && lw.used < ctxW {
+			lw.write(lipgloss.NewStyle(), strings.Repeat(" ", ctxW-lw.used))
+		}
+		out = append(out, lw.b.String())
+	}
+	return out
 }
 
 // wordStyle picks the lipgloss style for one word from its paragraph kind,

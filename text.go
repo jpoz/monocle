@@ -32,6 +32,7 @@ type word struct {
 	style   wordStyle
 	col     int // pre paragraphs: display column where the word starts
 	row     int // pre paragraphs: visual row within the paragraph
+	cell    int // paraTable: column index within the row
 }
 
 type section struct {
@@ -57,9 +58,10 @@ func (k paraKind) pre() bool { return k == paraCode || k == paraTable }
 type paraInfo struct {
 	kind    paraKind
 	marker  string // paraList: bullet or number shown before the first line
-	width   int    // pre paragraphs: full row width
+	width   int    // pre paragraphs: full row width at natural layout
 	sepCols []int  // paraTable: columns where │ separators are drawn
 	header  bool   // paraTable: the first row is a header
+	ncols   int    // paraTable: number of columns
 }
 
 // indent is the left margin wrapped lines of this paragraph render under.
@@ -308,7 +310,7 @@ func buildTable(lines []string) rawPara {
 		}
 	}
 
-	info := paraInfo{kind: paraTable, header: header}
+	info := paraInfo{kind: paraTable, header: header, ncols: len(widths)}
 	starts := make([]int, len(widths))
 	x := 0
 	for c := range widths {
@@ -328,6 +330,7 @@ func buildTable(lines []string) rawPara {
 			for _, w := range cell {
 				w.col = col
 				w.row = r
+				w.cell = c
 				words = append(words, w)
 				col += dispWidth(w.text) + 1
 			}

@@ -29,7 +29,8 @@ rendered with their structure intact:
 - **headings** become section markers (shown in the status bar, jumpable
   with `n`/`p`)
 - **tables** render as an aligned grid with `│` column separators and an
-  underlined header row; up/down moves between cells
+  underlined header row; up/down moves between cells. Tables wider than the
+  text column shrink their widest columns and wrap cell text to fit
 - **code blocks** keep their exact lines and indentation (never wrapped)
   and render tinted
 - **lists** get `•` bullets (or their number) with hanging indent, one item
