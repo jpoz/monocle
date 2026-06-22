@@ -45,6 +45,7 @@ func main() {
 		m.style = *st.Style
 	}
 	m.setTheme(themeIndex(st.Theme))
+	m.voiceID = st.Voice
 
 	final, err := tea.NewProgram(m, tea.WithAltScreen()).Run()
 	if err != nil {
@@ -53,8 +54,10 @@ func main() {
 	}
 
 	if fm, ok := final.(model); ok {
+		fm.stopProc() // silence any read-aloud tail still playing
 		st.Style = &fm.style
 		st.Theme = themes[fm.themeIdx].name
+		st.Voice = fm.voiceID
 		st.setProgress(key, fm.idx, len(doc.words))
 		if err := st.save(); err != nil {
 			fmt.Fprintln(os.Stderr, "monocle: saving state:", err)

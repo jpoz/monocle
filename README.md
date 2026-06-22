@@ -80,6 +80,8 @@ the same words appear more than once. They persist in
 | `p`                 | copy the file's path (relative to the git root) |
 | `{` / `}`           | paragraph start / next paragraph                |
 | `n` / `b`           | next / previous section (markdown headings)     |
+| `r`                 | read aloud from the focal word (any key stops)  |
+| `v` / `V`           | next / previous voice while reading             |
 | `g` / `G`           | top / end of document                           |
 | `+` / `-`           | wider / narrower text column                    |
 | `s`                 | style picker                                    |
@@ -89,6 +91,26 @@ the same words appear more than once. They persist in
 Up/down move between *wrapped* lines, like a text editor: the focus lands on
 the word nearest your current column, and crosses paragraph boundaries
 seamlessly.
+
+## Read aloud
+
+Press `r` to read aloud from the focal word to the end of its section (the
+heading-delimited block the cursor is in). The word highlight tracks the
+speech, word by word, as it plays. Pressing any key stops both the audio and
+the highlight. This is macOS-only.
+
+Press `v` (or `V` for the previous one) while reading to switch voice — it
+cycles through the installed voices for your locale and restarts from the
+current word. The choice persists across runs. (Voice switching needs the Swift
+helper below; the `say` fallback ignores it.)
+
+To keep the highlight in exact step with the audio, monocle uses a small Swift
+helper built on `AVSpeechSynthesizer`, whose word-boundary callbacks report the
+real word being spoken (rather than estimating per-word timing, which drifts on
+numbers, abbreviations, and the synthesizer's own pauses). It is compiled from
+an embedded source on first use and cached, so it needs the Swift toolchain
+(`swiftc`, included with the Xcode Command Line Tools). Without it, monocle
+falls back to the `say` command with an estimated, less precise highlight.
 
 ## Styles
 

@@ -188,10 +188,17 @@ func (w *lineWriter) gapTo(to int, sepCols []int, gap, grid lipgloss.Style) {
 	}
 }
 
+// focusHighlight reports whether the focal word should carry its highlight:
+// when the style toggle is on, or always while reading aloud so the spoken
+// word stands out even if the toggle is off.
+func (m model) focusHighlight() bool {
+	return m.style.WordHighlight || m.reading
+}
+
 // writeWord renders word i with focus and selection precedence applied.
 func (m model) writeWord(lw *lineWriter, i int, st lipgloss.Style, lo, hi int, selOk bool) {
 	switch {
-	case i == m.idx && m.style.WordHighlight:
+	case i == m.idx && m.focusHighlight():
 		lw.writeFocus(st, m.doc.words[i].text)
 	case selOk && i >= lo && i <= hi:
 		lw.writeSel(st, m.doc.words[i].text)
@@ -296,7 +303,7 @@ func (m model) renderTableRows(l line, curPara int, current bool, ctxW int) []st
 func (m model) wordStyle(w word, info paraInfo, bright, focus, underline bool) lipgloss.Style {
 	var s lipgloss.Style
 	switch {
-	case focus && m.style.WordHighlight:
+	case focus && m.focusHighlight():
 		s = m.st.focus
 	case info.kind == paraHeading && bright:
 		s = m.st.head
@@ -413,6 +420,8 @@ func (m model) statusBar() string {
 	}
 
 	switch {
+	case m.reading:
+		parts = append(parts, "▶ reading aloud · "+m.voiceName()+" · v/V voice · any key stops")
 	case m.editing:
 		parts = append(parts, "editing comment · ctrl+s save · esc cancel")
 	case m.selecting:
@@ -421,7 +430,7 @@ func (m model) statusBar() string {
 		// Only echo the note when the panel isn't there to show it.
 		parts = append(parts, "💬 "+oneLine(m.comments[m.commentAt(m.idx)].Body))
 	default:
-		parts = append(parts, "hjkl move · {} para · n/b section · ⇧ select · c comment · p path · x export · s style · t theme · q quit")
+		parts = append(parts, "hjkl move · {} para · n/b section · r read · ⇧ select · c comment · p path · x export · s style · t theme · q quit")
 	}
 	return m.centerStatus(strings.Join(parts, " · "))
 }

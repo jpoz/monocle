@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -42,6 +44,19 @@ type model struct {
 	flash       string // transient status message, cleared on next key
 	themeIdx    int    // index into themes
 	themePicker bool   // theme picker overlay open
+
+	reading   bool          // read-aloud in progress
+	readStart int           // first word of the current read, base for wordOff
+	readEnd   int           // exclusive word index where the current read stops
+	readAvg   float64       // mean word length over the read span (fallback pacing)
+	wordOff   []int         // UTF-16 start offset of each read word, for the helper
+	readGen   int           // bumped on each start/stop so stale messages are ignored
+	sayProc   *exec.Cmd     // handle to the running speech process, for stopping it
+	sayOut    *bufio.Reader // helper's word-boundary stream
+
+	voiceID      string      // selected speech voice identifier ("" = system default)
+	voices       []voiceInfo // installed voices to cycle through, loaded lazily
+	voicesLoaded bool
 }
 
 func newModel(doc *document) model {
@@ -271,8 +286,56 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		return m, nil
 
+	case sayWordMsg:
+		if !m.reading || msg.gen != m.readGen {
+			return m, nil
+		}
+		m.idx = m.wordForOffset(msg.loc)
+		return m, m.readWordCmd(m.readGen)
+
+	case sayTickMsg:
+		if !m.reading || msg.gen != m.readGen {
+			return m, nil
+		}
+		if m.idx+1 >= m.readEnd {
+			// End of the section; let the audio tail finish on its own.
+			m.reading = false
+			return m, nil
+		}
+		m.idx++
+		return m, m.tickCmd(m.readGen)
+
+	case sayDoneMsg:
+		if msg.gen == m.readGen {
+			m.reading = false
+			m.sayProc = nil
+			m.sayOut = nil
+		}
+		return m, nil
+
 	case tea.KeyMsg:
 		m.flash = ""
+		// While reading aloud, v/V cycle the voice (restarting from the focal
+		// word) and ctrl+c quits; any other key stops the read.
+		if m.reading {
+			switch msg.String() {
+			case "ctrl+c":
+				m.stopProc()
+				return m, tea.Quit
+			case "v", "V":
+				delta := 1
+				if msg.String() == "V" {
+					delta = -1
+				}
+				if m.cycleVoice(delta) {
+					return m.startReading()
+				}
+				m.flash = "No alternate voices available"
+				return m, nil
+			}
+			m.stopReading()
+			return m, nil
+		}
 		if m.editing {
 			return m.updateEditor(msg)
 		}
@@ -329,6 +392,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch msg.String() {
 		case "q", "ctrl+c":
+			m.stopProc()
 			return m, tea.Quit
 
 		case "esc":
@@ -336,7 +400,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.selecting = false
 				return m, nil
 			}
+			m.stopProc()
 			return m, tea.Quit
+
+		case "r":
+			return m.startReading()
 
 		case "c":
 			m.openComment()

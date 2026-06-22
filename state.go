@@ -16,6 +16,7 @@ type state struct {
 	// reading as all-off.
 	Style *styleConfig        `json:"style,omitempty"`
 	Theme string              `json:"theme,omitempty"`
+	Voice string              `json:"voice,omitempty"` // selected read-aloud voice id
 	Docs  map[string]docState `json:"docs"`
 }
 
