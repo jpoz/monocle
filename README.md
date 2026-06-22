@@ -40,6 +40,34 @@ rendered with their structure intact:
 
 Other files are read as plain text with paragraphs split on blank lines.
 
+## HTML files (browser review)
+
+HTML files (`.html`, `.htm`) don't open in the terminal reader — monocle spins
+up a local web server, opens the file in your browser, and overlays a
+commenting layer on top of it:
+
+```sh
+monocle interviews/notification.html
+```
+
+The document renders unchanged inside an iframe (its own CSS, images, and
+relative links all work — assets are served from the file's directory), with a
+comment sidebar alongside it. To leave a note, **select any text** and click the
+**💬 Comment** button that appears; type your note and press `⌘`/`Ctrl`+`Enter`
+(or *Comment*) to save. Saved comments highlight their passage in the document
+and show as cards in the sidebar — click either to jump to the other. Cards have
+*Edit* and *Delete*; saving an empty edit deletes the note.
+
+The toolbar's **Export** button copies every comment to your clipboard as the
+same Markdown the terminal reader produces (see [Comments](#comments)), and
+**Copy path** copies the file's path. The server runs on `127.0.0.1` on a random
+port; press `Ctrl-C` in the terminal to stop it.
+
+Comments are anchored to the selected text (the quote plus a little surrounding
+context), so they survive small edits and re-find the right passage even when
+the same words appear more than once. They persist in
+`~/.config/monocle/html-comments.json`, keyed by the document's path.
+
 ## Controls
 
 | Key                 | Action                                          |

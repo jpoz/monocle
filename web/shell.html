@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{.Title}} — monocle</title>
+    <link rel="stylesheet" href="/__monocle/overlay.css" />
+  </head>
+  <body>
+    <div id="monocle-app">
+      <header id="monocle-bar">
+        <div class="left">
+          <span class="logo">◉ monocle</span>
+          <span id="monocle-title">{{.RelPath}}</span>
+        </div>
+        <div class="right">
+          <span id="monocle-count">0 comments</span>
+          <button id="monocle-copy-path" title="Copy the file path to the clipboard">
+            Copy path
+          </button>
+          <button id="monocle-export" title="Copy all comments as Markdown">
+            Export
+          </button>
+        </div>
+      </header>
+      <div id="monocle-main">
+        <iframe id="monocle-doc" src="{{.DocPath}}" title="document"></iframe>
+        <aside id="monocle-sidebar">
+          <div id="monocle-comments"></div>
+          <div id="monocle-empty" class="empty">
+            Select text in the document, then click
+            <strong>Comment</strong> to leave a note.
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <div id="monocle-add-btn" class="hidden"><button>💬 Comment</button></div>
+
+    <div id="monocle-composer" class="hidden">
+      <textarea
+        id="monocle-composer-text"
+        placeholder="Add a comment…  (⌘/Ctrl+Enter to save, Esc to cancel)"
+      ></textarea>
+      <div class="composer-actions">
+        <button id="monocle-composer-cancel" class="secondary">Cancel</button>
+        <button id="monocle-composer-save">Comment</button>
+      </div>
+    </div>
+
+    <div id="monocle-toast" class="hidden"></div>
+
+    <script src="/__monocle/overlay.js"></script>
+  </body>
+</html>

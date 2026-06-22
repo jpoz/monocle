@@ -1,0 +1,298 @@
+:root {
+  --bg: #f6f7f9;
+  --bar-bg: #1f2329;
+  --bar-fg: #e8eaed;
+  --sidebar-bg: #ffffff;
+  --border: #e2e5ea;
+  --muted: #6b7280;
+  --accent: #d7a02a;
+  --accent-soft: rgba(215, 160, 42, 0.22);
+  --accent-strong: rgba(215, 160, 42, 0.45);
+  --card-bg: #fbfbfc;
+  --shadow: 0 6px 24px rgba(15, 23, 42, 0.18);
+  --bar-h: 44px;
+  --sidebar-w: 340px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
+  color: #1f2329;
+}
+
+#monocle-app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* Top bar ----------------------------------------------------------------- */
+#monocle-bar {
+  height: var(--bar-h);
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  background: var(--bar-bg);
+  color: var(--bar-fg);
+  font-size: 13px;
+  user-select: none;
+}
+
+#monocle-bar .left,
+#monocle-bar .right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#monocle-bar .logo {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+}
+
+#monocle-title {
+  color: #aeb4bd;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+#monocle-count {
+  color: #aeb4bd;
+}
+
+#monocle-bar button {
+  background: #2c313a;
+  color: var(--bar-fg);
+  border: 1px solid #3a414c;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+#monocle-bar button:hover {
+  background: #3a414c;
+}
+
+/* Main split -------------------------------------------------------------- */
+#monocle-main {
+  flex: 1 1 auto;
+  display: flex;
+  min-height: 0;
+}
+
+#monocle-doc {
+  flex: 1 1 auto;
+  border: none;
+  background: #fff;
+  height: 100%;
+}
+
+#monocle-sidebar {
+  flex: 0 0 var(--sidebar-w);
+  width: var(--sidebar-w);
+  border-left: 1px solid var(--border);
+  background: var(--sidebar-bg);
+  overflow-y: auto;
+  padding: 12px;
+}
+
+#monocle-empty.empty {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 24px 8px;
+  text-align: center;
+}
+
+#monocle-empty.hidden {
+  display: none;
+}
+
+/* Comment cards ----------------------------------------------------------- */
+.monocle-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 11px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+.monocle-card:hover,
+.monocle-card.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.monocle-card blockquote {
+  margin: 0 0 8px;
+  padding-left: 9px;
+  border-left: 3px solid var(--accent);
+  color: #475063;
+  font-size: 12px;
+  line-height: 1.45;
+  max-height: 4.5em;
+  overflow: hidden;
+}
+
+.monocle-card .body {
+  font-size: 13.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.monocle-card .meta {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.monocle-card .actions {
+  display: flex;
+  gap: 6px;
+}
+
+.monocle-card .actions button {
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.monocle-card .actions button:hover {
+  background: var(--border);
+  color: #1f2329;
+}
+
+.monocle-card textarea {
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 8px;
+  font: inherit;
+  font-size: 13.5px;
+}
+
+/* Highlights inside the document iframe are styled via injected CSS in
+   overlay.js, since this stylesheet lives in the parent document. */
+
+/* Floating "Comment" button ---------------------------------------------- */
+#monocle-add-btn {
+  position: fixed;
+  z-index: 2147483646;
+}
+
+#monocle-add-btn button {
+  background: var(--bar-bg);
+  color: #fff;
+  border: none;
+  border-radius: 7px;
+  padding: 7px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+
+#monocle-add-btn button:hover {
+  background: #000;
+}
+
+/* Composer popover -------------------------------------------------------- */
+#monocle-composer {
+  position: fixed;
+  z-index: 2147483647;
+  width: 300px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 10px;
+}
+
+#monocle-composer textarea {
+  width: 100%;
+  min-height: 80px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  font: inherit;
+  font-size: 13.5px;
+}
+
+#monocle-composer textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.composer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.composer-actions button {
+  border: none;
+  border-radius: 6px;
+  padding: 6px 13px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--accent);
+  color: #2b2200;
+}
+
+.composer-actions button.secondary {
+  background: #eef0f3;
+  color: #1f2329;
+  font-weight: 500;
+}
+
+.composer-actions button:hover {
+  filter: brightness(0.96);
+}
+
+/* Toast ------------------------------------------------------------------- */
+#monocle-toast {
+  position: fixed;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bar-bg);
+  color: #fff;
+  padding: 9px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  box-shadow: var(--shadow);
+  z-index: 2147483647;
+  transition: opacity 0.2s;
+}
+
+.hidden {
+  display: none !important;
+}

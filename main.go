@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -14,6 +16,18 @@ func main() {
 	}
 
 	path := os.Args[1]
+
+	// HTML documents open in the browser with a commenting overlay instead of
+	// the terminal reader: their structure is theirs to render, not ours.
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".html", ".htm":
+		if err := serveHTML(path); err != nil {
+			fmt.Fprintln(os.Stderr, "monocle:", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	doc, err := loadDocument(path)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "monocle:", err)
