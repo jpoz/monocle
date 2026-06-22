@@ -306,22 +306,37 @@ func availableVoices() []voiceInfo {
 	}
 
 	locale, lang := preferredLocale()
-	pick := func(keep func(voiceInfo) bool) []voiceInfo {
-		var vs []voiceInfo
-		for _, v := range all {
-			if keep(v) {
-				vs = append(vs, v)
-			}
-		}
-		return vs
-	}
-	vs := pick(func(v voiceInfo) bool { return locale != "" && v.lang == locale })
+	vs := pickFrom(all, func(v voiceInfo) bool { return locale != "" && v.lang == locale })
 	if len(vs) == 0 {
-		vs = pick(func(v voiceInfo) bool { return lang != "" && (v.lang == lang || strings.HasPrefix(v.lang, lang+"-")) })
+		vs = pickFrom(all, func(v voiceInfo) bool { return lang != "" && (v.lang == lang || strings.HasPrefix(v.lang, lang+"-")) })
 	}
 	if len(vs) == 0 {
 		vs = all
 	}
+
+	// Drop the legacy MacinTalk voices (the novelty set — Zarvox, Boing, … — and
+	// the ancient robotic ones), which are useless for reading prose. Modern
+	// voices live under com.apple.voice.* / com.apple.ttsbundle.*. Keep them only
+	// as a last resort, if nothing else is installed.
+	if real := pickFrom(vs, func(v voiceInfo) bool { return !strings.HasPrefix(v.id, legacyVoicePrefix) }); len(real) > 0 {
+		vs = real
+	}
+
+	// The Eloquence voices (Eddy, Flo, Grandma, …) are one formant engine with
+	// preset tweaks; they sound nearly identical, so switching between them feels
+	// like nothing changed. Collapse the family to a single representative.
+	elo := false
+	kept := make([]voiceInfo, 0, len(vs))
+	for _, v := range vs {
+		if strings.HasPrefix(v.id, eloquencePrefix) {
+			if elo {
+				continue
+			}
+			elo = true
+		}
+		kept = append(kept, v)
+	}
+	vs = kept
 
 	best := map[string]voiceInfo{}
 	for _, v := range vs {
@@ -333,8 +348,33 @@ func availableVoices() []voiceInfo {
 	for _, v := range best {
 		result = append(result, v)
 	}
-	sort.Slice(result, func(i, j int) bool { return result[i].name < result[j].name })
+	// Best quality first (so downloaded enhanced/premium voices lead the cycle),
+	// then by name for a stable order within a quality tier.
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].quality != result[j].quality {
+			return result[i].quality > result[j].quality
+		}
+		return result[i].name < result[j].name
+	})
 	return result
+}
+
+// legacyVoicePrefix is the identifier namespace of the old MacinTalk voices.
+const legacyVoicePrefix = "com.apple.speech.synthesis.voice."
+
+// eloquencePrefix is the namespace of the Eloquence formant voices, which are
+// one engine with preset variations that sound nearly the same.
+const eloquencePrefix = "com.apple.eloquence."
+
+// pickFrom returns the voices in vs matching keep.
+func pickFrom(vs []voiceInfo, keep func(voiceInfo) bool) []voiceInfo {
+	var out []voiceInfo
+	for _, v := range vs {
+		if keep(v) {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // preferredLocale derives the user's locale (e.g. "en-US") and language
@@ -347,12 +387,9 @@ func preferredLocale() (locale, lang string) {
 	if l == "" {
 		l = os.Getenv("LC_MESSAGES")
 	}
-	l = strings.SplitN(l, ".", 2)[0]    // strip ".UTF-8"
+	l, _, _ = strings.Cut(l, ".")       // strip ".UTF-8"
 	l = strings.ReplaceAll(l, "_", "-") // en_US -> en-US
-	lang = l
-	if i := strings.Index(l, "-"); i >= 0 {
-		lang = l[:i]
-	}
+	lang, _, _ = strings.Cut(l, "-")    // en-US -> en
 	return l, lang
 }
 

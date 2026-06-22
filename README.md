@@ -17,6 +17,32 @@ make install        # builds and installs to ~/bin
 
 Or `go build -o monocle .` and put the binary wherever you like.
 
+### Better read-aloud voices
+
+[Read aloud](#read-aloud) (macOS only) sounds far better with Apple's natural
+voices, which aren't installed by default — macOS ships only low-quality
+"compact" voices, so out of the box the choices are robotic and nearly
+identical. The good voices are free, but there's **no supported command-line
+installer**: they're on-demand system assets that only the Spoken Content UI can
+fetch. You can at least jump straight to the right pane:
+
+```sh
+open "x-apple.systempreferences:com.apple.Accessibility-Settings.extension"
+```
+
+Then **Spoken Content → System Voice → Manage Voices…**, expand **English (US)**,
+and check a few good ones:
+
+- **Ava (Premium)** — Siri-quality, the best of the bunch
+- **Zoe (Premium)** — Siri-quality
+- **Evan (Enhanced)**, **Nathan (Enhanced)**, **Joelle (Enhanced)**, **Tom (Enhanced)**
+- **Samantha (Enhanced)** — a big step up from the default compact Samantha
+
+They download in the background (Premium are ~100–200 MB each). Once installed
+they show up in monocle automatically and, being higher quality, lead the `v`
+voice cycle — no restart needed. (Siri's own voices aren't available to
+third-party apps, so they can't appear.)
+
 ## Usage
 
 ```sh
@@ -103,6 +129,11 @@ Press `v` (or `V` for the previous one) while reading to switch voice — it
 cycles through the installed voices for your locale and restarts from the
 current word. The choice persists across runs. (Voice switching needs the Swift
 helper below; the `say` fallback ignores it.)
+
+Out of the box the cycle is short and robotic — macOS only ships low-quality
+"compact" voices, and the near-identical MacinTalk novelty voices are hidden.
+Install Apple's natural voices for a dramatic upgrade; see
+[Better read-aloud voices](#better-read-aloud-voices).
 
 To keep the highlight in exact step with the audio, monocle uses a small Swift
 helper built on `AVSpeechSynthesizer`, whose word-boundary callbacks report the

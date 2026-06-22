@@ -112,8 +112,15 @@ func TestAvailableVoices(t *testing.T) {
 			t.Errorf("duplicate name %q", v.name)
 		}
 		seen[v.name] = true
-		if i > 0 && vs[i-1].name > v.name {
-			t.Errorf("not sorted: %q before %q", vs[i-1].name, v.name)
+		if i > 0 {
+			// Best quality first, then name within a quality tier.
+			p := vs[i-1]
+			if p.quality < v.quality || (p.quality == v.quality && p.name > v.name) {
+				t.Errorf("not sorted: %q(q%d) before %q(q%d)", p.name, p.quality, v.name, v.quality)
+			}
+		}
+		if strings.HasPrefix(v.id, legacyVoicePrefix) {
+			t.Errorf("legacy voice not filtered: %q", v.id)
 		}
 	}
 	t.Logf("%d en-US voices, e.g. %q", len(vs), vs[0].name)
