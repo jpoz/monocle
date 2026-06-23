@@ -14,6 +14,20 @@
           <span id="monocle-title">{{.RelPath}}</span>
         </div>
         <div class="right">
+          <select id="monocle-voice" title="Voice for read-aloud"></select>
+          <select id="monocle-rate" title="Reading speed">
+            <option value="0.5">0.5×</option>
+            <option value="0.75">0.75×</option>
+            <option value="1" selected>1×</option>
+            <option value="1.25">1.25×</option>
+            <option value="1.5">1.5×</option>
+            <option value="1.75">1.75×</option>
+            <option value="2">2×</option>
+          </select>
+          <button id="monocle-read" title="Read the document aloud (Esc or click the document to stop)">
+            ▶ Read
+          </button>
+          <span class="sep"></span>
           <span id="monocle-count">0 comments</span>
           <button id="monocle-copy-path" title="Copy the file path to the clipboard">
             Copy path

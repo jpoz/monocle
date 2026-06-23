@@ -85,6 +85,40 @@ body {
   background: #3a414c;
 }
 
+/* Read-aloud controls */
+#monocle-read.reading {
+  background: var(--accent);
+  color: #2b2200;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+#monocle-voice,
+#monocle-rate {
+  background: #2c313a;
+  color: var(--bar-fg);
+  border: 1px solid #3a414c;
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+#monocle-voice {
+  max-width: 150px;
+}
+
+#monocle-voice:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+#monocle-bar .sep {
+  width: 1px;
+  height: 18px;
+  background: #3a414c;
+}
+
 /* Main split -------------------------------------------------------------- */
 #monocle-main {
   flex: 1 1 auto;

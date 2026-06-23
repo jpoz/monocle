@@ -84,6 +84,17 @@ comment sidebar alongside it. To leave a note, **select any text** and click the
 and show as cards in the sidebar — click either to jump to the other. Cards have
 *Edit* and *Delete*; saving an empty edit deletes the note.
 
+The toolbar's **▶ Read** button reads the document aloud, highlighting each word
+as it's spoken (the browser counterpart of the terminal's [read aloud](#read-aloud)).
+With text selected it reads just that passage; with a plain cursor it reads from
+there to the end; otherwise it reads the whole document. The **voice** dropdown
+beside it picks the voice and the **speed** dropdown (0.5×–2×) sets the pace;
+both choices are remembered, and changing either mid-read takes effect in place.
+Press **Esc**, click in the document, or press the button again (**■ Stop**) to
+stop. This uses the browser's built-in speech synthesis —
+no Swift helper or `say` needed — so it works in any modern browser; the voices
+available are whatever the browser/OS provides.
+
 The toolbar's **Export** button copies every comment to your clipboard as the
 same Markdown the terminal reader produces (see [Comments](#comments)), and
 **Copy path** copies the file's path. The server runs on `127.0.0.1` on a random
