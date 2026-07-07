@@ -22,6 +22,10 @@
   var readBtn = document.getElementById("monocle-read");
   var voiceSelect = document.getElementById("monocle-voice");
   var rateSelect = document.getElementById("monocle-rate");
+  var voiceHelp = document.getElementById("monocle-voicehelp");
+  var modeSelect = document.getElementById("monocle-mode");
+  var themeSelect = document.getElementById("monocle-theme");
+  var widthSelect = document.getElementById("monocle-width"); // absent for raw HTML docs
 
   var comments = [];
   var pending = null; // {quote, prefix, suffix, rect} for a new comment
@@ -40,6 +44,8 @@
       return;
     }
     injectDocStyles();
+    applyTheme();
+    applyWidth();
     docDoc.addEventListener("mouseup", onDocMouseUp);
     docDoc.addEventListener("mousedown", hideAddBtn);
     docWin.addEventListener("scroll", hideAddBtn, true);
@@ -48,16 +54,23 @@
   }
 
   // The highlight style lives inside the iframe document, so inject it there.
+  // Colors come from the theme variables (themes.css, loaded by the Markdown
+  // page); the fallbacks cover raw HTML documents, which don't load it.
   function injectDocStyles() {
     var style = docDoc.createElement("style");
     style.textContent =
-      ".monocle-hl{background:rgba(215,160,42,0.30);border-radius:2px;" +
+      ".monocle-hl{background:var(--hl-bg,rgba(215,160,42,0.30));border-radius:2px;" +
       "cursor:pointer;transition:background 0.12s;}" +
-      ".monocle-hl:hover,.monocle-hl.active{background:rgba(215,160,42,0.62);}" +
+      ".monocle-hl:hover,.monocle-hl.active{background:var(--hl-bg-active,rgba(215,160,42,0.62));}" +
       // The read-aloud cursor: a solid block on the word being spoken, like
       // the terminal reader's reverse-video focal word.
-      ".monocle-read{background:#d7a02a;color:#1f1300;border-radius:2px;" +
-      "box-shadow:0 0 0 1px #d7a02a;}";
+      ".monocle-read{background:var(--accent,#d7a02a);color:var(--accent-fg,#1f1300);border-radius:2px;" +
+      "box-shadow:0 0 0 1px var(--accent,#d7a02a);}" +
+      // The idle speaking cursor: where read-aloud will begin, placed by
+      // clicking the document. An outlined word (no fill-over of the text) so
+      // it reads as "start here" rather than the solid spoken-word block.
+      ".monocle-cursor{background:var(--hl-bg,rgba(215,160,42,0.20));border-radius:2px;" +
+      "cursor:pointer;box-shadow:0 0 0 1.5px var(--accent,#d7a02a);}";
     docDoc.head.appendChild(style);
   }
 
@@ -65,17 +78,42 @@
   // Walk every text node under root, concatenating their values and recording
   // each node's [start,end) span in that concatenation. This matches the
   // string a Range over the same content produces, so offsets line up.
+  // `breaks` records offsets where the nearest block-level ancestor changes —
+  // the read-aloud chunker pauses there (between paragraphs, headings, list
+  // items, table rows) instead of at every raw newline in the HTML source.
+  var BLOCK_TAGS = {
+    ADDRESS: 1, ARTICLE: 1, ASIDE: 1, BLOCKQUOTE: 1, CAPTION: 1, DD: 1,
+    DETAILS: 1, DIV: 1, DL: 1, DT: 1, FIGCAPTION: 1, FIGURE: 1, FOOTER: 1,
+    FORM: 1, H1: 1, H2: 1, H3: 1, H4: 1, H5: 1, H6: 1, HEADER: 1, HR: 1,
+    LI: 1, MAIN: 1, NAV: 1, OL: 1, P: 1, PRE: 1, SECTION: 1, SUMMARY: 1,
+    TABLE: 1, TR: 1, UL: 1,
+  };
+
+  function blockAncestorOf(node, root) {
+    var el = node.parentNode;
+    while (el && el !== root) {
+      if (el.nodeType === 1 && BLOCK_TAGS[el.tagName]) return el;
+      el = el.parentNode;
+    }
+    return root;
+  }
+
   function buildIndex(root) {
     var walker = docDoc.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
     var text = "";
     var nodes = [];
+    var breaks = [];
+    var prevBlock = null;
     var n;
     while ((n = walker.nextNode())) {
       var start = text.length;
+      var blk = blockAncestorOf(n, root);
+      if (prevBlock !== null && blk !== prevBlock) breaks.push(start);
+      prevBlock = blk;
       text += n.nodeValue;
       nodes.push({ node: n, start: start, end: text.length });
     }
-    return { text: text, nodes: nodes };
+    return { text: text, nodes: nodes, breaks: breaks };
   }
 
   // Map a global character offset back to a (node, offset) DOM position.
@@ -102,12 +140,64 @@
     return pre.toString().length;
   }
 
+  // The doc-text offset under a point in the frame's viewport (clientX/Y from a
+  // document mouse event), or -1 if it can't be resolved. caretRangeFromPoint
+  // is the WebKit/Blink spelling; caretPositionFromPoint is the standard one
+  // Firefox uses. Both give a (node, offset) caret we measure like a selection.
+  function offsetFromPoint(x, y) {
+    var node, off;
+    if (docDoc.caretRangeFromPoint) {
+      var r = docDoc.caretRangeFromPoint(x, y);
+      if (!r) return -1;
+      node = r.startContainer;
+      off = r.startOffset;
+    } else if (docDoc.caretPositionFromPoint) {
+      var p = docDoc.caretPositionFromPoint(x, y);
+      if (!p) return -1;
+      node = p.offsetNode;
+      off = p.offset;
+    } else {
+      return -1;
+    }
+    var pre = docDoc.createRange();
+    pre.selectNodeContents(docBody);
+    try {
+      pre.setEnd(node, off);
+    } catch (e) {
+      return -1;
+    }
+    return pre.toString().length;
+  }
+
+  // Snap an offset to the start of its word: skip forward over any whitespace,
+  // then back to the word's first character. Read-aloud boundary events land on
+  // word starts, so beginning there makes speech resume on a clean word.
+  function wordStartAt(text, offset) {
+    var i = Math.max(0, Math.min(offset, text.length));
+    while (i < text.length && /\s/.test(text[i])) i++;
+    while (i > 0 && !/\s/.test(text[i - 1])) i--;
+    return i;
+  }
+
+  function wordEndAt(text, i) {
+    while (i < text.length && !/\s/.test(text[i])) i++;
+    return i;
+  }
+
   // --- Selection -> pending comment ----------------------------------------
-  function onDocMouseUp() {
+  function onDocMouseUp(ev) {
     var sel = docWin.getSelection();
-    if (!sel || sel.isCollapsed || !sel.rangeCount) return hideAddBtn();
-    var quote = sel.toString();
-    if (!quote.trim()) return hideAddBtn();
+    var quote = sel && sel.rangeCount ? sel.toString() : "";
+    // A plain click (no dragged-out selection) places the speaking cursor at
+    // the clicked word instead of starting a comment.
+    if (!sel || sel.isCollapsed || !quote.trim()) {
+      hideAddBtn();
+      placeCursorFromEvent(ev);
+      return;
+    }
+    // Dragging out a real selection means the user is doing something other
+    // than following the read, so stop it (the old click-to-stop lived here).
+    if (reading) stopReading();
 
     var range = sel.getRangeAt(0);
     var index = buildIndex(docBody);
@@ -489,6 +579,102 @@
         });
     });
 
+  // --- Appearance ------------------------------------------------------------
+  // Appearance is two independent controls, both persisted like the read-aloud
+  // settings. The theme picks a palette *family* (Default, Nord, Dracula, …);
+  // the mode picks light or dark *within* that family, with "Auto" resolved
+  // against the OS preference here rather than in CSS so one attribute drives
+  // both documents. Every family ships a light and a dark variant, so the two
+  // controls stay independent. The family is stamped as data-theme and the
+  // resolved light/dark as data-mode, on both the shell page and the document
+  // frame; each stylesheet restyles from the matching variable block. The width
+  // presets set the CSS variable the Markdown column reads. Raw HTML documents
+  // style themselves, so the shell only renders the width control for Markdown
+  // (see shell.html).
+  var systemDark = window.matchMedia
+    ? window.matchMedia("(prefers-color-scheme: dark)")
+    : null;
+
+  // Old single-select values that no longer map 1:1 to a family key. Each
+  // baked a light/dark choice into the theme name; split them back out so an
+  // existing setting lands on the right family and mode.
+  var LEGACY_THEMES = {
+    "catppuccin-latte": { theme: "catppuccin", mode: "light" },
+    "catppuccin-mocha": { theme: "catppuccin", mode: "dark" },
+    "gruvbox-light": { theme: "gruvbox", mode: "light" },
+    "gruvbox-dark": { theme: "gruvbox", mode: "dark" },
+    "solarized-light": { theme: "solarized", mode: "light" },
+    "solarized-dark": { theme: "solarized", mode: "dark" },
+    "one-dark": { theme: "one", mode: "dark" },
+  };
+
+  function applyTheme() {
+    var theme = themeSelect.value || "default";
+    var mode = modeSelect.value;
+    if (mode === "auto") mode = systemDark && systemDark.matches ? "dark" : "light";
+    var roots = [document.documentElement];
+    if (docDoc) roots.push(docDoc.documentElement);
+    for (var i = 0; i < roots.length; i++) {
+      roots[i].setAttribute("data-theme", theme);
+      roots[i].setAttribute("data-mode", mode);
+    }
+  }
+
+  function applyWidth() {
+    if (!widthSelect || !docDoc) return;
+    docDoc.documentElement.style.setProperty(
+      "--monocle-content-width",
+      widthSelect.value
+    );
+  }
+
+  (function setupAppearance() {
+    try {
+      var m = localStorage.getItem("monocle-mode");
+      var t = localStorage.getItem("monocle-theme");
+      // Migrate the old single select, which stored either a bare mode
+      // (auto/light/dark) or a theme name that encoded its own light/dark.
+      if (t === "auto" || t === "light" || t === "dark") {
+        m = m || t;
+        t = "default";
+      } else if (LEGACY_THEMES[t]) {
+        m = m || LEGACY_THEMES[t].mode;
+        t = LEGACY_THEMES[t].theme;
+      }
+      if (m) modeSelect.value = m;
+      if (t) themeSelect.value = t;
+      var w = widthSelect && localStorage.getItem("monocle-width");
+      if (w) widthSelect.value = w;
+    } catch (e) {}
+    modeSelect.addEventListener("change", function () {
+      try {
+        localStorage.setItem("monocle-mode", modeSelect.value);
+      } catch (e) {}
+      applyTheme();
+    });
+    themeSelect.addEventListener("change", function () {
+      try {
+        localStorage.setItem("monocle-theme", themeSelect.value);
+      } catch (e) {}
+      applyTheme();
+    });
+    if (widthSelect) {
+      widthSelect.addEventListener("change", function () {
+        try {
+          localStorage.setItem("monocle-width", widthSelect.value);
+        } catch (e) {}
+        applyWidth();
+      });
+    }
+    // Follow the OS if it flips while resolving Auto.
+    if (systemDark && systemDark.addEventListener) {
+      systemDark.addEventListener("change", function () {
+        if (modeSelect.value === "auto") applyTheme();
+      });
+    }
+    applyTheme(); // theme the shell before the iframe finishes loading
+  })();
+
   // --- Read aloud ----------------------------------------------------------
   // Speak the document with the browser's own speech synthesizer, tracking the
   // spoken word with a moving highlight — the browser counterpart of the
@@ -501,7 +687,13 @@
   var readRegionStart = 0; // doc-text offset the read region begins at
   var readRegionEnd = 0; // doc-text offset it ends at
   var readCursor = 0; // doc-text offset of the word currently spoken
+  var cursorSet = false; // true once a click has placed the idle speaking cursor
   var voices = [];
+  // Sentinel option value for the "How to install better voices…" menu item,
+  // and the last real voice selected — so picking the help item can revert the
+  // dropdown instead of leaving it stuck on a non-voice.
+  var INSTALL_HELP_VALUE = "__monocle_install_voices__";
+  var lastVoiceURI = "";
 
   var speechOK = "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
 
@@ -527,11 +719,19 @@
     // Voice and speed are fixed once an utterance starts, so changing either
     // mid-read restarts from the current word, like the terminal's voice cycle.
     voiceSelect.addEventListener("change", function () {
+      if (voiceSelect.value === INSTALL_HELP_VALUE) {
+        // Not a real voice — revert to the previous choice and open the guide.
+        voiceSelect.value = lastVoiceURI;
+        openVoiceHelp();
+        return;
+      }
+      lastVoiceURI = voiceSelect.value;
       try {
         localStorage.setItem("monocle-voice", voiceSelect.value);
       } catch (e) {}
       restartFromCursor();
     });
+    setupVoiceHelp();
     rateSelect.addEventListener("change", function () {
       try {
         localStorage.setItem("monocle-rate", rateSelect.value);
@@ -539,13 +739,16 @@
       restartFromCursor();
     });
 
-    // Any interaction with the document stops the read, like a keypress does in
-    // the terminal. Esc stops from either the shell or the document frame.
-    docDoc.addEventListener("mousedown", function () {
-      if (reading) stopReading();
-    });
+    // Clicking a word in the document moves the speaking cursor there rather
+    // than stopping (see onDocMouseUp / placeCursorFromEvent). To stop, use the
+    // Stop button or Esc; Esc works from either the shell or the document frame.
     var onEsc = function (e) {
-      if (e.key === "Escape" && reading) stopReading();
+      if (e.key !== "Escape") return;
+      if (voiceHelp && !voiceHelp.classList.contains("hidden")) {
+        closeVoiceHelp();
+        return;
+      }
+      if (reading) stopReading();
     };
     document.addEventListener("keydown", onEsc);
     docDoc.addEventListener("keydown", onEsc);
@@ -627,15 +830,18 @@
       saved = localStorage.getItem("monocle-voice") || "";
     } catch (e) {}
     voiceSelect.innerHTML = "";
+    // Keep the select enabled even with no matched voices, so the install
+    // guide (appended below) stays reachable — that's exactly when it helps.
+    voiceSelect.disabled = false;
     if (!voices.length) {
       var opt = document.createElement("option");
       opt.textContent = "default voice";
       opt.value = "";
       voiceSelect.appendChild(opt);
-      voiceSelect.disabled = true;
+      appendVoiceHelpOption();
+      lastVoiceURI = "";
       return;
     }
-    voiceSelect.disabled = false;
     var hasSaved = false;
     voices.forEach(function (v) {
       var opt = document.createElement("option");
@@ -645,6 +851,22 @@
       voiceSelect.appendChild(opt);
     });
     if (hasSaved) voiceSelect.value = saved;
+    appendVoiceHelpOption();
+    lastVoiceURI = voiceSelect.value;
+  }
+
+  // A disabled separator plus the "How to install better voices…" item, always
+  // last in the list. Selecting it opens the platform guide (see the change
+  // handler); it's never a real voice.
+  function appendVoiceHelpOption() {
+    var sep = document.createElement("option");
+    sep.disabled = true;
+    sep.textContent = "──────────────";
+    voiceSelect.appendChild(sep);
+    var help = document.createElement("option");
+    help.value = INSTALL_HELP_VALUE;
+    help.textContent = "⚙  How to install better voices…";
+    voiceSelect.appendChild(help);
   }
 
   function selectedVoice() {
@@ -653,6 +875,159 @@
       if (voices[i].voiceURI === voiceSelect.value) return voices[i];
     }
     return voices[0];
+  }
+
+  // Voice-install guide ------------------------------------------------------
+  // The Web Speech API only surfaces the text-to-speech voices the OS already
+  // has installed; the good ones are usually a free but non-default download.
+  // This modal walks the user through installing them for their platform.
+
+  function setupVoiceHelp() {
+    if (!voiceHelp) return;
+    var close = function () {
+      closeVoiceHelp();
+    };
+    voiceHelp.querySelector(".vh-close").addEventListener("click", close);
+    voiceHelp.querySelector(".vh-done").addEventListener("click", close);
+    voiceHelp.querySelector(".vh-backdrop").addEventListener("click", close);
+    voiceHelp.querySelector(".vh-reload").addEventListener("click", function () {
+      window.location.reload();
+    });
+  }
+
+  function openVoiceHelp() {
+    if (!voiceHelp) return;
+    var guide = voiceGuide(detectPlatform());
+    voiceHelp.querySelector("#monocle-vh-title").textContent = guide.title;
+    voiceHelp.querySelector(".vh-body").innerHTML = guide.body;
+    voiceHelp.classList.remove("hidden");
+  }
+
+  function closeVoiceHelp() {
+    if (voiceHelp) voiceHelp.classList.add("hidden");
+  }
+
+  function detectPlatform() {
+    var ua = navigator.userAgent || "";
+    var plat = navigator.platform || "";
+    var touch = navigator.maxTouchPoints || 0;
+    if (/iPhone|iPod|iPad/.test(ua)) return "ios";
+    // iPadOS 13+ masquerades as a Mac; a touchscreen gives it away.
+    if ((/Mac/.test(plat) || /Mac OS X/.test(ua)) && touch > 1) return "ios";
+    if (/Mac/.test(plat) || /Mac OS X/.test(ua)) return "mac";
+    if (/Android/.test(ua)) return "android";
+    if (/Win/.test(plat) || /Windows/.test(ua)) return "windows";
+    if (/Linux|X11/.test(plat) || /Linux/.test(ua)) return "linux";
+    return "other";
+  }
+
+  // Step-by-step instructions per platform. The body is a trusted static
+  // string (no user input), so innerHTML is safe here.
+  function voiceGuide(platform) {
+    var guides = {
+      mac: {
+        title: "Install better voices — macOS",
+        body:
+          "<p>macOS ships with a few plain voices but offers much higher-quality " +
+          "<strong>Premium</strong> and <strong>Enhanced</strong> voices as free " +
+          "downloads. Once installed they show up in this menu automatically.</p>" +
+          "<ol>" +
+          "<li>Open the Apple menu <strong>()</strong> → <strong>System Settings</strong>.</li>" +
+          "<li>Go to <strong>Accessibility</strong> → <strong>Read &amp; Speak</strong> " +
+          "(called <strong>Spoken Content</strong> on macOS&nbsp;15 Sequoia and earlier).</li>" +
+          "<li>Click the <strong>System voice</strong> pop-up menu, then click the " +
+          "<strong>Info button (ⓘ)</strong> beside it to browse and download voices. " +
+          "(On macOS&nbsp;15 and earlier, choose <strong>Manage Voices…</strong> from the " +
+          "dropdown instead.)</li>" +
+          "<li>Pick any voice labelled <strong>(Premium)</strong> or " +
+          "<strong>(Enhanced)</strong> — e.g. <em>Ava</em>, <em>Zoe</em>, <em>Evan</em>, " +
+          "<em>Nathan</em> — and click the download button. Each downloads in the " +
+          "background (some are 100–500&nbsp;MB).</li>" +
+          "<li>When the download finishes, come back and click " +
+          "<strong>Reload page</strong> below.</li>" +
+          "</ol>" +
+          "<p class=\"vh-note\">The <strong>Siri</strong> voices can't be used here — " +
+          "Apple blocks them from browsers and other apps, so they never appear in this " +
+          "menu even once downloaded. <strong>Premium</strong> voices are the best you can " +
+          "pick; they sound dramatically more natural than the defaults and sort to the top " +
+          "of this menu.</p>",
+      },
+      windows: {
+        title: "Install better voices — Windows",
+        body:
+          "<p>Read-aloud uses the voices installed in Windows. You can add extra, " +
+          "higher-quality ones for free.</p>" +
+          "<ol>" +
+          "<li>Press <kbd>Win</kbd>+<kbd>I</kbd> to open <strong>Settings</strong>.</li>" +
+          "<li>Go to <strong>Time &amp; language</strong> → <strong>Speech</strong>.</li>" +
+          "<li>Under <strong>Manage voices</strong>, click <strong>Add voices</strong>, " +
+          "pick a language/voice, and click <strong>Add</strong> to download it.</li>" +
+          "<li>On Windows 11, for the most natural voices also try " +
+          "<strong>Accessibility</strong> → <strong>Narrator</strong> → " +
+          "<strong>Add natural voices</strong>.</li>" +
+          "<li>Reload this page — the new voices appear in this menu.</li>" +
+          "</ol>" +
+          "<p class=\"vh-note\">Which voices a browser exposes varies; Microsoft Edge " +
+          "usually offers the widest selection.</p>",
+      },
+      ios: {
+        title: "Install better voices — iPhone & iPad",
+        body:
+          "<ol>" +
+          "<li>Open the <strong>Settings</strong> app.</li>" +
+          "<li>Go to <strong>Accessibility</strong> → <strong>Spoken Content</strong> → " +
+          "<strong>Voices</strong>.</li>" +
+          "<li>Choose a language, tap a voice, and download an <strong>Enhanced</strong> " +
+          "or <strong>Premium</strong> version.</li>" +
+          "<li>Return to your browser and reload this page.</li>" +
+          "</ol>" +
+          "<p class=\"vh-note\">Enhanced and Premium voices are far clearer than the " +
+          "compact defaults.</p>",
+      },
+      android: {
+        title: "Install better voices — Android",
+        body:
+          "<p>Exact wording varies by device and Android version.</p>" +
+          "<ol>" +
+          "<li>Open <strong>Settings</strong> and search for " +
+          "<strong>Text-to-speech</strong> (often under <strong>System</strong> → " +
+          "<strong>Languages &amp; input</strong>).</li>" +
+          "<li>Tap the gear next to your preferred engine, e.g. " +
+          "<strong>Google Text-to-speech</strong>.</li>" +
+          "<li>Choose <strong>Install voice data</strong> and download the " +
+          "high-quality / enhanced voices for your language.</li>" +
+          "<li>Reload this page.</li>" +
+          "</ol>",
+      },
+      linux: {
+        title: "Install better voices — Linux",
+        body:
+          "<p>Read-aloud uses your system speech engine — usually " +
+          "<strong>speech-dispatcher</strong> driving <strong>espeak-ng</strong>.</p>" +
+          "<ol>" +
+          "<li>Install extra voices or a nicer engine with your package manager — " +
+          "for example <kbd>festival</kbd> with <kbd>festvox-*</kbd> voices, or " +
+          "<kbd>mbrola</kbd> voices for espeak-ng.</li>" +
+          "<li>Point speech-dispatcher at the new engine/voices and restart it.</li>" +
+          "<li>Reload this page.</li>" +
+          "</ol>" +
+          "<p class=\"vh-note\">While online, Chrome may also offer higher-quality " +
+          "remote voices with nothing to install.</p>",
+      },
+      other: {
+        title: "Install better voices",
+        body:
+          "<p>Read-aloud uses the text-to-speech voices provided by your operating " +
+          "system or browser. To get higher-quality ones:</p>" +
+          "<ol>" +
+          "<li>Open your system's speech, accessibility, or text-to-speech settings.</li>" +
+          "<li>Download any voices labelled <strong>Enhanced</strong>, " +
+          "<strong>Premium</strong>, or <strong>Natural</strong>.</li>" +
+          "<li>Reload this page — new voices appear in this menu automatically.</li>" +
+          "</ol>",
+      },
+    };
+    return guides[platform] || guides.other;
   }
 
   // currentRate is the chosen speaking rate on SpeechSynthesisUtterance's scale
@@ -676,16 +1051,18 @@
   function toggleReading() {
     if (reading) return stopReading();
     // Start from the selection if there is one: a real selection reads just
-    // that passage; a bare caret reads from there to the end of the document
-    // (the browser stand-in for the terminal's "from the focal word").
+    // that passage. Otherwise, if a click has placed the speaking cursor, read
+    // from there to the end; failing both, read the whole document.
     var index = buildIndex(docBody);
     var start = 0;
     var end = index.text.length;
     var sel = docWin.getSelection();
-    if (sel && sel.rangeCount) {
+    if (sel && sel.rangeCount && !sel.isCollapsed) {
       var range = sel.getRangeAt(0);
       start = selectionStart(range);
-      if (!sel.isCollapsed) end = start + sel.toString().length;
+      end = start + sel.toString().length;
+    } else if (cursorSet) {
+      start = readCursor;
     }
     if (!index.text.slice(start, end).trim()) {
       start = 0;
@@ -694,7 +1071,39 @@
     startReadingRange(start, end);
   }
 
+  // A plain click in the document positions the speaking cursor at the clicked
+  // word. While reading, this scrubs the live read to that word and keeps going;
+  // while idle, it paints an outlined marker showing where Read will begin.
+  function placeCursorFromEvent(ev) {
+    if (!ev || !speechOK) return;
+    var off = offsetFromPoint(ev.clientX, ev.clientY);
+    if (off < 0) return;
+    var index = buildIndex(docBody);
+    var start = wordStartAt(index.text, off);
+    readCursor = start;
+    cursorSet = true;
+    if (reading) {
+      stopReading();
+      startReadingRange(start, index.text.length);
+    } else {
+      showCursor(index, start);
+    }
+  }
+
+  // Paint the idle speaking-cursor marker on the word at `start`.
+  function showCursor(index, start) {
+    unwrapMarks("mark.monocle-cursor");
+    var end = wordEndAt(index.text, start);
+    if (end <= start) return;
+    // buildIndex was taken before unwrapping any prior cursor mark; rebuild so
+    // offsets map to the current DOM.
+    var fresh = buildIndex(docBody);
+    if (end > fresh.text.length) end = fresh.text.length;
+    paintSpan(fresh, { start: start, end: end }, "monocle-cursor", null);
+  }
+
   function startReadingRange(start, end) {
+    unwrapMarks("mark.monocle-cursor"); // the moving spoken-word block replaces it
     var index = buildIndex(docBody);
     if (end > index.text.length) end = index.text.length;
     var text = index.text.slice(start, end);
@@ -708,18 +1117,30 @@
     readRegionStart = start;
     readRegionEnd = end;
     readCursor = start;
-    readChunks = chunkText(text);
+    var breaks = [];
+    for (var i = 0; i < index.breaks.length; i++) {
+      var b = index.breaks[i];
+      if (b > start && b < end) breaks.push(b - start);
+    }
+    readChunks = chunkText(text, breaks);
     updateReadButton();
     speakChunk(gen, 0);
   }
 
   // chunkText splits the region into utterance-sized pieces (recording each
-  // piece's offset within the region), breaking at sentence ends, newlines, or
-  // — for runaway sentences — a space past the size cap. Long single
-  // utterances are spoken in pieces because some browsers (notably Chrome) cut
-  // off speech after ~15s; short pieces sidestep that while the offsets still
-  // map back to the document.
-  function chunkText(s) {
+  // piece's offset within the region), breaking at block boundaries (the
+  // region-relative offsets in `breaks`), sentence ends, or — for runaway
+  // sentences — a space past the size cap. Raw newlines in the HTML source
+  // (soft-wrapped Markdown lines, whitespace between tags) do NOT break a
+  // chunk: each utterance carries an audible pause, so splitting there made
+  // speech staccato. Long single utterances are spoken in pieces because some
+  // browsers (notably Chrome) cut off speech after ~15s; short pieces
+  // sidestep that while the offsets still map back to the document.
+  function chunkText(s, breaks) {
+    var isBreak = {};
+    for (var k = 0; k < (breaks ? breaks.length : 0); k++) {
+      isBreak[breaks[k]] = true;
+    }
     var chunks = [];
     var i = 0;
     var n = s.length;
@@ -729,13 +1150,13 @@
       while (j < n) {
         var ch = s[j];
         j++;
+        if (isBreak[j]) break;
         var len = j - base;
         var atEnd = j >= n;
         if ((ch === "." || ch === "!" || ch === "?" || ch === "…") &&
             len >= 24 && (atEnd || /\s/.test(s[j]))) {
           break;
         }
-        if (ch === "\n") break;
         if (len >= 220 && /\s/.test(ch)) break;
       }
       var piece = s.slice(base, j);
@@ -750,7 +1171,13 @@
     if (gen !== readGen || !reading) return;
     if (ci >= readChunks.length) return finishReading(gen);
     var chunk = readChunks[ci];
-    var u = new SpeechSynthesisUtterance(chunk.text);
+    // Newlines become spaces so the engine reads across soft-wrapped lines
+    // without pausing. Angle brackets become spaces too: some engines parse
+    // the utterance as markup and silently drop everything after a bare "<"
+    // (code spans like `<slug>-<app>` made speech skip to the next chunk).
+    // One char for one char, so boundary charIndex offsets stay aligned
+    // with the document text.
+    var u = new SpeechSynthesisUtterance(chunk.text.replace(/[\n<>]/g, " "));
     var v = selectedVoice();
     if (v) {
       u.voice = v;

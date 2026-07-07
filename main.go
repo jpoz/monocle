@@ -9,19 +9,44 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+func usage() {
+	fmt.Fprintln(os.Stderr, "usage: monocle [--tui] <file>")
+	fmt.Fprintln(os.Stderr, "  --tui   read Markdown in the terminal instead of the browser")
+}
+
 func main() {
-	if len(os.Args) != 2 || os.Args[1] == "-h" || os.Args[1] == "--help" {
-		fmt.Fprintln(os.Stderr, "usage: monocle <file>")
+	tui := false
+	var files []string
+	for _, arg := range os.Args[1:] {
+		switch arg {
+		case "--tui", "-tui":
+			tui = true
+		case "-h", "--help":
+			usage()
+			os.Exit(2)
+		default:
+			files = append(files, arg)
+		}
+	}
+	if len(files) != 1 {
+		usage()
 		os.Exit(2)
 	}
 
-	path := os.Args[1]
+	path := files[0]
 
-	// HTML documents open in the browser with a commenting overlay instead of
-	// the terminal reader: their structure is theirs to render, not ours.
-	switch strings.ToLower(filepath.Ext(path)) {
-	case ".html", ".htm":
-		if err := serveHTML(path); err != nil {
+	// HTML documents always open in the browser with a commenting overlay:
+	// their structure is theirs to render, not ours. Markdown opens there by
+	// default too (rendered server-side); --tui keeps it in the terminal.
+	ext := strings.ToLower(filepath.Ext(path))
+	if ext == ".html" || ext == ".htm" {
+		if tui {
+			fmt.Fprintln(os.Stderr, "monocle: HTML files only open in the browser (drop --tui)")
+			os.Exit(2)
+		}
+	}
+	if ext == ".html" || ext == ".htm" || (isMarkdownPath(path) && !tui) {
+		if err := serveWeb(path); err != nil {
 			fmt.Fprintln(os.Stderr, "monocle:", err)
 			os.Exit(1)
 		}

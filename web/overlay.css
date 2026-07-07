@@ -1,15 +1,6 @@
+/* Colors come from the theme palettes in themes.css; overlay.js stamps the
+   chosen theme as data-theme on the root. Only layout constants live here. */
 :root {
-  --bg: #f6f7f9;
-  --bar-bg: #1f2329;
-  --bar-fg: #e8eaed;
-  --sidebar-bg: #ffffff;
-  --border: #e2e5ea;
-  --muted: #6b7280;
-  --accent: #d7a02a;
-  --accent-soft: rgba(215, 160, 42, 0.22);
-  --accent-strong: rgba(215, 160, 42, 0.45);
-  --card-bg: #fbfbfc;
-  --shadow: 0 6px 24px rgba(15, 23, 42, 0.18);
   --bar-h: 44px;
   --sidebar-w: 340px;
 }
@@ -25,7 +16,7 @@ body {
   background: var(--bg);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
     Arial, sans-serif;
-  color: #1f2329;
+  color: var(--fg);
 }
 
 #monocle-app {
@@ -62,19 +53,19 @@ body {
 }
 
 #monocle-title {
-  color: #aeb4bd;
+  color: var(--bar-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
 }
 
 #monocle-count {
-  color: #aeb4bd;
+  color: var(--bar-muted);
 }
 
 #monocle-bar button {
-  background: #2c313a;
+  background: var(--bar-btn-bg);
   color: var(--bar-fg);
-  border: 1px solid #3a414c;
+  border: 1px solid var(--bar-btn-border);
   border-radius: 6px;
   padding: 5px 10px;
   font-size: 12px;
@@ -82,22 +73,25 @@ body {
 }
 
 #monocle-bar button:hover {
-  background: #3a414c;
+  background: var(--bar-btn-border);
 }
 
 /* Read-aloud controls */
 #monocle-read.reading {
   background: var(--accent);
-  color: #2b2200;
+  color: var(--accent-fg);
   border-color: var(--accent);
   font-weight: 600;
 }
 
 #monocle-voice,
-#monocle-rate {
-  background: #2c313a;
+#monocle-rate,
+#monocle-mode,
+#monocle-theme,
+#monocle-width {
+  background: var(--bar-btn-bg);
   color: var(--bar-fg);
-  border: 1px solid #3a414c;
+  border: 1px solid var(--bar-btn-border);
   border-radius: 6px;
   padding: 4px 6px;
   font-size: 12px;
@@ -116,7 +110,7 @@ body {
 #monocle-bar .sep {
   width: 1px;
   height: 18px;
-  background: #3a414c;
+  background: var(--bar-btn-border);
 }
 
 /* Main split -------------------------------------------------------------- */
@@ -137,7 +131,7 @@ body {
   flex: 0 0 var(--sidebar-w);
   width: var(--sidebar-w);
   border-left: 1px solid var(--border);
-  background: var(--sidebar-bg);
+  background: var(--surface);
   overflow-y: auto;
   padding: 12px;
 }
@@ -175,7 +169,7 @@ body {
   margin: 0 0 8px;
   padding-left: 9px;
   border-left: 3px solid var(--accent);
-  color: #475063;
+  color: var(--quote-fg);
   font-size: 12px;
   line-height: 1.45;
   max-height: 4.5em;
@@ -215,7 +209,7 @@ body {
 
 .monocle-card .actions button:hover {
   background: var(--border);
-  color: #1f2329;
+  color: var(--fg);
 }
 
 .monocle-card textarea {
@@ -227,6 +221,8 @@ body {
   padding: 7px 8px;
   font: inherit;
   font-size: 13.5px;
+  background: var(--surface);
+  color: var(--fg);
 }
 
 /* Highlights inside the document iframe are styled via injected CSS in
@@ -240,7 +236,7 @@ body {
 
 #monocle-add-btn button {
   background: var(--bar-bg);
-  color: #fff;
+  color: var(--bar-fg);
   border: none;
   border-radius: 7px;
   padding: 7px 12px;
@@ -251,7 +247,7 @@ body {
 }
 
 #monocle-add-btn button:hover {
-  background: #000;
+  background: color-mix(in srgb, var(--bar-fg) 12%, var(--bar-bg));
 }
 
 /* Composer popover -------------------------------------------------------- */
@@ -259,7 +255,7 @@ body {
   position: fixed;
   z-index: 2147483647;
   width: 300px;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
   box-shadow: var(--shadow);
@@ -275,6 +271,8 @@ body {
   padding: 8px;
   font: inherit;
   font-size: 13.5px;
+  background: var(--surface);
+  color: var(--fg);
 }
 
 #monocle-composer textarea:focus {
@@ -298,12 +296,12 @@ body {
   font-weight: 600;
   cursor: pointer;
   background: var(--accent);
-  color: #2b2200;
+  color: var(--accent-fg);
 }
 
 .composer-actions button.secondary {
-  background: #eef0f3;
-  color: #1f2329;
+  background: var(--btn-secondary-bg);
+  color: var(--fg);
   font-weight: 500;
 }
 
@@ -318,13 +316,141 @@ body {
   left: 50%;
   transform: translateX(-50%);
   background: var(--bar-bg);
-  color: #fff;
+  color: var(--bar-fg);
   padding: 9px 16px;
   border-radius: 8px;
   font-size: 13px;
   box-shadow: var(--shadow);
   z-index: 2147483647;
   transition: opacity 0.2s;
+}
+
+/* Voice install-help modal ------------------------------------------------ */
+#monocle-voicehelp {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+#monocle-voicehelp .vh-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+#monocle-voicehelp .vh-panel {
+  position: relative;
+  width: 480px;
+  max-width: 100%;
+  max-height: 100%;
+  overflow: auto;
+  background: var(--surface);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 18px 20px 16px;
+}
+
+.vh-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.vh-head h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.vh-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px 7px;
+  border-radius: 6px;
+  line-height: 1;
+}
+
+.vh-close:hover {
+  background: var(--btn-secondary-bg);
+  color: var(--fg);
+}
+
+.vh-body {
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.vh-body p {
+  margin: 0 0 12px;
+}
+
+.vh-body ol {
+  margin: 0 0 12px;
+  padding-left: 22px;
+}
+
+.vh-body li {
+  margin: 0 0 9px;
+}
+
+.vh-body strong {
+  font-weight: 700;
+}
+
+.vh-body kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  background: var(--btn-secondary-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 5px;
+}
+
+.vh-body .vh-note {
+  font-size: 12.5px;
+  color: var(--muted);
+  border-left: 2px solid var(--border);
+  padding-left: 10px;
+  margin-bottom: 0;
+}
+
+.vh-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.vh-actions button {
+  border: none;
+  border-radius: 6px;
+  padding: 6px 13px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.vh-actions button.secondary {
+  background: var(--btn-secondary-bg);
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.vh-actions button:hover {
+  filter: brightness(0.96);
 }
 
 .hidden {

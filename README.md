@@ -46,11 +46,17 @@ third-party apps, so they can't appear.)
 ## Usage
 
 ```sh
-monocle README.md
+monocle README.md          # opens in the browser (review mode)
+monocle --tui README.md    # opens the terminal reader
+monocle notes.txt          # plain text opens the terminal reader
 ```
 
-Markdown files (`.md`, `.markdown`, `.mdx`) are parsed structurally and
-rendered with their structure intact:
+Markdown and HTML files open in the browser [review mode](#browser-review)
+by default. Everything else — and Markdown with `--tui` — opens the terminal
+reader.
+
+In the terminal reader, Markdown files (`.md`, `.markdown`, `.mdx`) are
+parsed structurally and rendered with their structure intact:
 
 - **headings** become section markers (shown in the status bar, jumpable
   with `n`/`p`)
@@ -66,19 +72,23 @@ rendered with their structure intact:
 
 Other files are read as plain text with paragraphs split on blank lines.
 
-## HTML files (browser review)
+## Browser review
 
-HTML files (`.html`, `.htm`) don't open in the terminal reader — monocle spins
-up a local web server, opens the file in your browser, and overlays a
-commenting layer on top of it:
+HTML files (`.html`, `.htm`) and — by default — Markdown files open in the
+browser: monocle spins up a local web server, opens the document, and overlays
+a commenting layer on top of it:
 
 ```sh
 monocle interviews/notification.html
+monocle docs/plan.md
 ```
 
-The document renders unchanged inside an iframe (its own CSS, images, and
-relative links all work — assets are served from the file's directory), with a
-comment sidebar alongside it. To leave a note, **select any text** and click the
+HTML renders unchanged inside an iframe (its own CSS, images, and relative
+links all work — assets are served from the file's directory). Markdown is
+rendered to styled HTML (GitHub-flavored: tables, task lists, strikethrough),
+re-read on every refresh so edits show up with a reload; relative images and
+links resolve against the file's directory the same way. Either way you get a
+comment sidebar alongside the document. To leave a note, **select any text** and click the
 **💬 Comment** button that appears; type your note and press `⌘`/`Ctrl`+`Enter`
 (or *Comment*) to save. Saved comments highlight their passage in the document
 and show as cards in the sidebar — click either to jump to the other. Cards have
@@ -86,11 +96,13 @@ and show as cards in the sidebar — click either to jump to the other. Cards ha
 
 The toolbar's **▶ Read** button reads the document aloud, highlighting each word
 as it's spoken (the browser counterpart of the terminal's [read aloud](#read-aloud)).
-With text selected it reads just that passage; with a plain cursor it reads from
-there to the end; otherwise it reads the whole document. The **voice** dropdown
+With text selected it reads just that passage; otherwise it reads the whole
+document. **Click any word** to set the speaking cursor there: while idle the
+word is outlined to show where **▶ Read** will begin; while reading, the read
+jumps to that word and keeps going. The **voice** dropdown
 beside it picks the voice and the **speed** dropdown (0.5×–2×) sets the pace;
 both choices are remembered, and changing either mid-read takes effect in place.
-Press **Esc**, click in the document, or press the button again (**■ Stop**) to
+Press **Esc** or the button again (**■ Stop**) to
 stop. This uses the browser's built-in speech synthesis —
 no Swift helper or `say` needed — so it works in any modern browser; the voices
 available are whatever the browser/OS provides.

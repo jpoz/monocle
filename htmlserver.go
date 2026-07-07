@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"embed"
 	"encoding/json"
@@ -18,56 +19,96 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/parser"
+	gmhtml "github.com/yuin/goldmark/renderer/html"
 )
 
-//go:embed web/shell.html web/overlay.js web/overlay.css
+//go:embed web/shell.html web/overlay.js web/overlay.css web/docpage.html web/markdown.css web/themes.css
 var webFS embed.FS
 
-// htmlServer hosts a single HTML document for review: it serves the file (and
-// its sibling assets) inside an iframe, layers a commenting overlay on top,
-// and persists notes through a small JSON API. One process serves one
-// document; the comment list is guarded by mu because the browser fires
-// concurrent fetches.
+// htmlServer hosts a single document for review: it serves the file (and its
+// sibling assets) inside an iframe, layers a commenting overlay on top, and
+// persists notes through a small JSON API. HTML files are served verbatim;
+// Markdown files are rendered to HTML on each request, so a browser refresh
+// picks up edits. One process serves one document; the comment list is
+// guarded by mu because the browser fires concurrent fetches.
 type htmlServer struct {
-	mu      sync.Mutex
-	store   *htmlCommentStore
-	key     string // docKey, the persistence key
-	path    string // absolute path to the HTML file
-	dir     string // directory the file lives in (asset root)
-	base    string // file name within dir
-	relPath string // path shown in the toolbar
-	counter int64  // bumped per created comment to keep IDs unique within a run
+	mu       sync.Mutex
+	store    *htmlCommentStore
+	key      string // docKey, the persistence key
+	path     string // absolute path to the document
+	dir      string // directory the file lives in (asset root)
+	base     string // file name within dir
+	relPath  string // path shown in the toolbar
+	markdown bool   // render the document as Markdown instead of serving it raw
+	counter  int64  // bumped per created comment to keep IDs unique within a run
 }
 
-// serveHTML starts the review server for an HTML file, opens it in the
-// browser, and blocks until interrupted (Ctrl-C).
-func serveHTML(path string) error {
+// newHTMLServer builds the review server for an HTML or Markdown file.
+func newHTMLServer(path string) (*htmlServer, error) {
 	abs, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := os.Stat(abs); err != nil {
+		return nil, err
+	}
+
+	return &htmlServer{
+		store:    loadHTMLComments(),
+		key:      docKey(path),
+		path:     abs,
+		dir:      filepath.Dir(abs),
+		base:     filepath.Base(abs),
+		relPath:  repoRelPath(path),
+		markdown: isMarkdownPath(path),
+	}, nil
+}
+
+// handler routes the shell page, embedded assets, comment API, and the
+// document itself (with its sibling assets).
+func (s *htmlServer) handler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", s.handleShell)
+	mux.HandleFunc("/__monocle/overlay.js", asset("web/overlay.js", "text/javascript"))
+	mux.HandleFunc("/__monocle/overlay.css", asset("web/overlay.css", "text/css"))
+	mux.HandleFunc("/__monocle/markdown.css", asset("web/markdown.css", "text/css"))
+	mux.HandleFunc("/__monocle/themes.css", asset("web/themes.css", "text/css"))
+	mux.HandleFunc("/__monocle/api/comments", s.handleComments)
+	mux.HandleFunc("/__monocle/api/comments/", s.handleComment)
+	mux.HandleFunc("/__monocle/api/export", s.handleExport)
+	mux.HandleFunc("/__monocle/api/path", s.handlePath)
+	mux.Handle("/doc/", http.StripPrefix("/doc/", s.docHandler()))
+	return mux
+}
+
+// docHandler serves the document directory. In Markdown mode requests for
+// the document itself get the rendered page; everything else (images and
+// other relative assets) falls through to the file server.
+func (s *htmlServer) docHandler() http.Handler {
+	files := http.FileServer(http.Dir(s.dir))
+	if !s.markdown {
+		return files
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == s.base {
+			s.handleMarkdownDoc(w, r)
+			return
+		}
+		files.ServeHTTP(w, r)
+	})
+}
+
+// serveWeb starts the review server for an HTML or Markdown file, opens it
+// in the browser, and blocks until interrupted (Ctrl-C).
+func serveWeb(path string) error {
+	srv, err := newHTMLServer(path)
 	if err != nil {
 		return err
 	}
-	if _, err := os.Stat(abs); err != nil {
-		return err
-	}
-
-	srv := &htmlServer{
-		store:   loadHTMLComments(),
-		key:     docKey(path),
-		path:    abs,
-		dir:     filepath.Dir(abs),
-		base:    filepath.Base(abs),
-		relPath: repoRelPath(path),
-	}
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", srv.handleShell)
-	mux.HandleFunc("/__monocle/overlay.js", asset("web/overlay.js", "text/javascript"))
-	mux.HandleFunc("/__monocle/overlay.css", asset("web/overlay.css", "text/css"))
-	mux.HandleFunc("/__monocle/api/comments", srv.handleComments)
-	mux.HandleFunc("/__monocle/api/comments/", srv.handleComment)
-	mux.HandleFunc("/__monocle/api/export", srv.handleExport)
-	mux.HandleFunc("/__monocle/api/path", srv.handlePath)
-	mux.Handle("/doc/", http.StripPrefix("/doc/", http.FileServer(http.Dir(srv.dir))))
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -75,7 +116,7 @@ func serveHTML(path string) error {
 	}
 	url := fmt.Sprintf("http://%s/", ln.Addr().String())
 
-	server := &http.Server{Handler: mux}
+	server := &http.Server{Handler: srv.handler()}
 	go func() {
 		if err := server.Serve(ln); err != nil && err != http.ErrServerClosed {
 			fmt.Fprintln(os.Stderr, "monocle:", err)
@@ -98,6 +139,56 @@ func serveHTML(path string) error {
 	return server.Shutdown(ctx)
 }
 
+// isMarkdownPath reports whether path names a Markdown file, matching the
+// extensions the terminal reader parses structurally.
+func isMarkdownPath(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".md", ".markdown", ".mdx":
+		return true
+	}
+	return false
+}
+
+// mdRenderer converts Markdown to HTML: GFM for tables/strikethrough/task
+// lists, heading IDs so fragment links work, and raw HTML passed through —
+// these are the user's own local files.
+var mdRenderer = goldmark.New(
+	goldmark.WithExtensions(extension.GFM),
+	goldmark.WithParserOptions(parser.WithAutoHeadingID()),
+	goldmark.WithRendererOptions(gmhtml.WithUnsafe()),
+)
+
+// handleMarkdownDoc renders the Markdown source into the document page
+// template. It re-reads the file per request so a refresh shows edits.
+func (s *htmlServer) handleMarkdownDoc(w http.ResponseWriter, _ *http.Request) {
+	src, err := os.ReadFile(s.path)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	var body bytes.Buffer
+	if err := mdRenderer.Convert(src, &body); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	tmpl, err := template.ParseFS(webFS, "web/docpage.html")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	data := struct {
+		Title string
+		Body  template.HTML
+	}{
+		Title: s.base,
+		Body:  template.HTML(body.String()),
+	}
+	if err := tmpl.Execute(w, data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
 // handleShell renders the overlay shell page wrapping the document iframe.
 func (s *htmlServer) handleShell(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
@@ -111,13 +202,15 @@ func (s *htmlServer) handleShell(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	data := struct {
-		Title   string
-		RelPath string
-		DocPath string
+		Title    string
+		RelPath  string
+		DocPath  string
+		Markdown bool
 	}{
-		Title:   s.base,
-		RelPath: s.relPath,
-		DocPath: "/doc/" + s.base,
+		Title:    s.base,
+		RelPath:  s.relPath,
+		DocPath:  "/doc/" + s.base,
+		Markdown: s.markdown,
 	}
 	if err := tmpl.Execute(w, data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

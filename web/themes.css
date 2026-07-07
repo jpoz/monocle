@@ -1,0 +1,321 @@
+/* Color themes for the monocle shell and the rendered Markdown page. Both
+   documents load this sheet, and overlay.js stamps two attributes on both
+   roots: data-theme picks the palette *family* (Default, Nord, Dracula, …) and
+   data-mode picks "light" or "dark" *within* that family. Every family ships a
+   light and a dark variant, so the theme and mode controls stay independent.
+
+   Each block sets a small primitive palette; the base :root derives the rest
+   with color-mix, so a light/dark variant is ~11 lines. The bare :root doubles
+   as the Default light theme, so a document opened outside the shell (no
+   attributes) still reads. The family blocks use two attribute selectors, so
+   they outrank the mode-only Default rules and win the cascade. */
+
+:root {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --fg: #1f2329;
+  --muted: #6b7280;
+  --border: #e2e5ea;
+  --accent: #d7a02a;
+  --link: #b07f14;
+  --code-bg: #f0f1f4;
+  --bar-bg: #1f2329;
+  --bar-fg: #e8eaed;
+
+  /* Derived from the primitives above. Custom properties resolve at use
+     time, so these track whichever theme block wins the cascade. */
+  --border-soft: color-mix(in srgb, var(--border) 55%, var(--surface));
+  --pre-bg: var(--bg);
+  --th-bg: color-mix(in srgb, var(--border) 35%, var(--surface));
+  --row-alt: color-mix(in srgb, var(--border) 14%, var(--surface));
+  --quote-fg: color-mix(in srgb, var(--fg) 65%, var(--muted));
+  --card-bg: color-mix(in srgb, var(--border) 12%, var(--surface));
+  --btn-secondary-bg: color-mix(in srgb, var(--border) 55%, var(--surface));
+  --accent-fg: color-mix(in srgb, var(--accent) 25%, #000000);
+  --accent-soft: color-mix(in srgb, var(--accent) 22%, transparent);
+  --accent-strong: color-mix(in srgb, var(--accent) 45%, transparent);
+  --hl-bg: color-mix(in srgb, var(--accent) 30%, transparent);
+  --hl-bg-active: color-mix(in srgb, var(--accent) 62%, transparent);
+  --bar-muted: color-mix(in srgb, var(--bar-fg) 68%, var(--bar-bg));
+  --bar-btn-bg: color-mix(in srgb, var(--bar-fg) 8%, var(--bar-bg));
+  --bar-btn-border: color-mix(in srgb, var(--bar-fg) 18%, var(--bar-bg));
+  --shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+}
+
+/* Default -------------------------------------------------------------------
+   Light lives in the bare :root above (also the standalone fallback). */
+:root[data-mode="dark"] {
+  color-scheme: dark;
+  --bg: #14171c;
+  --surface: #1c2128;
+  --fg: #d6dae1;
+  --muted: #9aa3af;
+  --border: #333a45;
+  --accent: #d7a02a;
+  --link: #e0af3f;
+  --code-bg: #2a303a;
+  --bar-bg: #1f2329;
+  --bar-fg: #e8eaed;
+}
+
+/* Catppuccin — Latte / Mocha ------------------------------------------------ */
+:root[data-theme="catppuccin"][data-mode="light"] {
+  color-scheme: light;
+  --bg: #e6e9ef;
+  --surface: #eff1f5;
+  --fg: #4c4f69;
+  --muted: #6c6f85;
+  --border: #ccd0da;
+  --accent: #8839ef;
+  --link: #1e66f5;
+  --code-bg: #dce0e8;
+  --bar-bg: #dce0e8;
+  --bar-fg: #4c4f69;
+}
+
+:root[data-theme="catppuccin"][data-mode="dark"] {
+  color-scheme: dark;
+  --bg: #181825;
+  --surface: #1e1e2e;
+  --fg: #cdd6f4;
+  --muted: #a6adc8;
+  --border: #313244;
+  --accent: #cba6f7;
+  --link: #89b4fa;
+  --code-bg: #313244;
+  --bar-bg: #11111b;
+  --bar-fg: #cdd6f4;
+}
+
+/* Dracula — Alucard / Dracula ----------------------------------------------- */
+:root[data-theme="dracula"][data-mode="light"] {
+  color-scheme: light;
+  --bg: #f3f3ed;
+  --surface: #fffbeb;
+  --fg: #1f1f1f;
+  --muted: #635d52;
+  --border: #e2ddc9;
+  --accent: #7d5bd3;
+  --link: #036a96;
+  --code-bg: #ece7d3;
+  --bar-bg: #282a36;
+  --bar-fg: #f8f8f2;
+}
+
+:root[data-theme="dracula"][data-mode="dark"] {
+  color-scheme: dark;
+  --bg: #21222c;
+  --surface: #282a36;
+  --fg: #f8f8f2;
+  --muted: #6272a4;
+  --border: #44475a;
+  --accent: #bd93f9;
+  --link: #8be9fd;
+  --code-bg: #343746;
+  --bar-bg: #191a21;
+  --bar-fg: #f8f8f2;
+}
+
+/* Gruvbox — light / dark ---------------------------------------------------- */
+:root[data-theme="gruvbox"][data-mode="light"] {
+  color-scheme: light;
+  --bg: #f2e5bc;
+  --surface: #fbf1c7;
+  --fg: #3c3836;
+  --muted: #7c6f64;
+  --border: #d5c4a1;
+  --accent: #d79921;
+  --link: #076678;
+  --code-bg: #ebdbb2;
+  --bar-bg: #3c3836;
+  --bar-fg: #fbf1c7;
+}
+
+:root[data-theme="gruvbox"][data-mode="dark"] {
+  color-scheme: dark;
+  --bg: #1d2021;
+  --surface: #282828;
+  --fg: #ebdbb2;
+  --muted: #928374;
+  --border: #3c3836;
+  --accent: #fabd2f;
+  --link: #83a598;
+  --code-bg: #3c3836;
+  --bar-bg: #161819;
+  --bar-fg: #ebdbb2;
+}
+
+/* Monokai — light / dark ---------------------------------------------------- */
+:root[data-theme="monokai"][data-mode="light"] {
+  color-scheme: light;
+  --bg: #f5f4ec;
+  --surface: #fbfaf0;
+  --fg: #49483e;
+  --muted: #a59f85;
+  --border: #e6e3d0;
+  --accent: #e0186f;
+  --link: #1c8ca8;
+  --code-bg: #ecebdb;
+  --bar-bg: #272822;
+  --bar-fg: #f8f8f2;
+}
+
+:root[data-theme="monokai"][data-mode="dark"] {
+  color-scheme: dark;
+  --bg: #1e1f1c;
+  --surface: #272822;
+  --fg: #f8f8f2;
+  --muted: #75715e;
+  --border: #3e3d32;
+  --accent: #f92672;
+  --link: #66d9ef;
+  --code-bg: #3e3d32;
+  --bar-bg: #171814;
+  --bar-fg: #f8f8f2;
+}
+
+/* Nord — Snow Storm / Polar Night ------------------------------------------- */
+:root[data-theme="nord"][data-mode="light"] {
+  color-scheme: light;
+  --bg: #e5e9f0;
+  --surface: #eceff4;
+  --fg: #2e3440;
+  --muted: #4c566a;
+  --border: #d8dee9;
+  --accent: #5e81ac;
+  --link: #416a99;
+  --code-bg: #dde3ec;
+  --bar-bg: #2e3440;
+  --bar-fg: #eceff4;
+}
+
+:root[data-theme="nord"][data-mode="dark"] {
+  color-scheme: dark;
+  --bg: #2e3440;
+  --surface: #3b4252;
+  --fg: #e5e9f0;
+  --muted: #7b88a1;
+  --border: #434c5e;
+  --accent: #88c0d0;
+  --link: #81a1c1;
+  --code-bg: #434c5e;
+  --bar-bg: #242933;
+  --bar-fg: #eceff4;
+}
+
+/* One — One Light / One Dark ------------------------------------------------ */
+:root[data-theme="one"][data-mode="light"] {
+  color-scheme: light;
+  --bg: #eaeaeb;
+  --surface: #fafafa;
+  --fg: #383a42;
+  --muted: #a0a1a7;
+  --border: #dbdbdc;
+  --accent: #a626a4;
+  --link: #4078f2;
+  --code-bg: #eaeaeb;
+  --bar-bg: #383a42;
+  --bar-fg: #fafafa;
+}
+
+:root[data-theme="one"][data-mode="dark"] {
+  color-scheme: dark;
+  --bg: #21252b;
+  --surface: #282c34;
+  --fg: #abb2bf;
+  --muted: #5c6370;
+  --border: #3e4451;
+  --accent: #c678dd;
+  --link: #61afef;
+  --code-bg: #353b45;
+  --bar-bg: #1b1f24;
+  --bar-fg: #d7dae0;
+}
+
+/* Rosé Pine — Dawn / Rosé Pine ---------------------------------------------- */
+:root[data-theme="rose-pine"][data-mode="light"] {
+  color-scheme: light;
+  --bg: #faf4ed;
+  --surface: #fffaf3;
+  --fg: #575279;
+  --muted: #797593;
+  --border: #dfdad9;
+  --accent: #d7827e;
+  --link: #907aa9;
+  --code-bg: #f2e9e1;
+  --bar-bg: #575279;
+  --bar-fg: #faf4ed;
+}
+
+:root[data-theme="rose-pine"][data-mode="dark"] {
+  color-scheme: dark;
+  --bg: #191724;
+  --surface: #1f1d2e;
+  --fg: #e0def4;
+  --muted: #908caa;
+  --border: #26233a;
+  --accent: #ebbcba;
+  --link: #c4a7e7;
+  --code-bg: #26233a;
+  --bar-bg: #13111c;
+  --bar-fg: #e0def4;
+}
+
+/* Solarized — light / dark -------------------------------------------------- */
+:root[data-theme="solarized"][data-mode="light"] {
+  color-scheme: light;
+  --bg: #eee8d5;
+  --surface: #fdf6e3;
+  --fg: #657b83;
+  --muted: #93a1a1;
+  --border: #dcd4bc;
+  --accent: #b58900;
+  --link: #268bd2;
+  --code-bg: #eee8d5;
+  --bar-bg: #073642;
+  --bar-fg: #eee8d5;
+}
+
+:root[data-theme="solarized"][data-mode="dark"] {
+  color-scheme: dark;
+  --bg: #00212b;
+  --surface: #002b36;
+  --fg: #93a1a1;
+  --muted: #657b83;
+  --border: #0f4a5c;
+  --accent: #b58900;
+  --link: #268bd2;
+  --code-bg: #073642;
+  --bar-bg: #001a21;
+  --bar-fg: #eee8d5;
+}
+
+/* Tokyo Night — Day / Night ------------------------------------------------- */
+:root[data-theme="tokyo-night"][data-mode="light"] {
+  color-scheme: light;
+  --bg: #d5d6db;
+  --surface: #e1e2e7;
+  --fg: #3760bf;
+  --muted: #848cb5;
+  --border: #c4c8da;
+  --accent: #9854f1;
+  --link: #2e7de9;
+  --code-bg: #c8cbdb;
+  --bar-bg: #1a1b26;
+  --bar-fg: #c0caf5;
+}
+
+:root[data-theme="tokyo-night"][data-mode="dark"] {
+  color-scheme: dark;
+  --bg: #16161e;
+  --surface: #1a1b26;
+  --fg: #c0caf5;
+  --muted: #565f89;
+  --border: #292e42;
+  --accent: #bb9af7;
+  --link: #7aa2f7;
+  --code-bg: #24283b;
+  --bar-bg: #101014;
+  --bar-fg: #c0caf5;
+}
