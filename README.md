@@ -11,8 +11,9 @@ The current paragraph glows, everything else fades, and you move the focus
 word-by-word at your own pace. Your position stays vertically centered, so
 your eyes never travel — the text comes to you.
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/jpoz/monocle)](https://goreportcard.com/report/github.com/jpoz/monocle)
-[![Go version](https://img.shields.io/github/go-mod/go-version/jpoz/monocle?logo=go&logoColor=white)](go.mod)
+[![CI](https://github.com/jpoz/monocle/actions/workflows/ci.yml/badge.svg)](https://github.com/jpoz/monocle/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/jpoz/monocle.svg)](https://pkg.go.dev/github.com/jpoz/monocle)
+[![License: MIT](https://img.shields.io/github/license/jpoz/monocle)](LICENSE)
 [![Built with Bubble Tea](https://img.shields.io/badge/built%20with-Bubble%20Tea%20🧋-FF75B7)](https://github.com/charmbracelet/bubbletea)
 
 ![monocle reading its own README: the current paragraph is bright, the focal word is highlighted, and a comment is added to the margin](assets/demo.gif)
@@ -283,6 +284,8 @@ document's path.
 Built with 🧋 [Bubble Tea](https://github.com/charmbracelet/bubbletea) ·
 💄 [Lip Gloss](https://github.com/charmbracelet/lipgloss) ·
 📝 [goldmark](https://github.com/yuin/goldmark)
+
+Released under the ⚖️ [MIT License](LICENSE)
 
 ⭐ **If monocle changes how you read, consider starring the repo — it helps a lot!** ⭐
 
