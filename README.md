@@ -1,15 +1,46 @@
-# monocle
+<div align="center">
 
-A focused document reader for the terminal — examine one thing at a time.
-The current paragraph is shown bright with your position highlighted;
-everything above and below is dimmed. You move the focus word-by-word and
-line-by-line at your own pace — your position stays vertically centered, so
-your eyes never travel.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
+  <img src="assets/logo-light.svg" alt="monocle — a monocle lens bringing a paragraph of text into focus" width="600">
+</picture>
 
-(It started life as an automatic RSVP/Spritz-style speed reader, but the
-user-controlled focus view turned out to be the good part.)
+**A focused document reader for your terminal 🧐 — examine one thing at a time.**
 
-## Install
+The current paragraph glows, everything else fades, and you move the focus
+word-by-word at your own pace. Your position stays vertically centered, so
+your eyes never travel — the text comes to you.
+
+[![Go Report Card](https://goreportcard.com/badge/github.com/jpoz/monocle)](https://goreportcard.com/report/github.com/jpoz/monocle)
+[![Go version](https://img.shields.io/github/go-mod/go-version/jpoz/monocle?logo=go&logoColor=white)](go.mod)
+[![Built with Bubble Tea](https://img.shields.io/badge/built%20with-Bubble%20Tea%20🧋-FF75B7)](https://github.com/charmbracelet/bubbletea)
+
+![monocle reading its own README: the current paragraph is bright, the focal word is highlighted, and a comment is added to the margin](assets/demo.gif)
+
+</div>
+
+> 🧪 *It started life as an automatic RSVP/Spritz-style speed reader, but the
+> user-controlled focus view turned out to be the good part.*
+
+## ✨ Highlights
+
+|     |     |
+| --- | --- |
+| 🔦 **Focus view** | The current paragraph is bright, the focal word is highlighted, everything above and below dims. |
+| 📐 **Markdown-aware** | Headings, aligned tables, tinted code blocks, bullets, blockquotes — structure stays intact in the terminal. |
+| 🌐 **Browser review mode** | Markdown & HTML open in the browser with a commenting overlay, read-aloud, and live-reload on edit. |
+| 💬 **Margin comments** | Annotate passages as you read — cards live in the margin like a document sidebar, and export as LLM-ready Markdown. |
+| 🔊 **Read aloud** | Speech with a word-by-word highlight that tracks the real audio, not an estimate. |
+| 🎨 **10 bundled themes** | Nord, Dracula, Catppuccin, Tokyo Night, Gruvbox… truecolor, degrading gracefully to 256 colors. |
+| 🧠 **Remembers everything** | Reading position, theme, column width, and comments all persist across runs. |
+
+## 📦 Install
+
+```sh
+go install github.com/jpoz/monocle@latest
+```
+
+Or from a checkout:
 
 ```sh
 make install        # builds and installs to ~/bin
@@ -17,33 +48,7 @@ make install        # builds and installs to ~/bin
 
 Or `go build -o monocle .` and put the binary wherever you like.
 
-### Better read-aloud voices
-
-[Read aloud](#read-aloud) (macOS only) sounds far better with Apple's natural
-voices, which aren't installed by default — macOS ships only low-quality
-"compact" voices, so out of the box the choices are robotic and nearly
-identical. The good voices are free, but there's **no supported command-line
-installer**: they're on-demand system assets that only the Spoken Content UI can
-fetch. You can at least jump straight to the right pane:
-
-```sh
-open "x-apple.systempreferences:com.apple.Accessibility-Settings.extension"
-```
-
-Then **Spoken Content → System Voice → Manage Voices…**, expand **English (US)**,
-and check a few good ones:
-
-- **Ava (Premium)** — Siri-quality, the best of the bunch
-- **Zoe (Premium)** — Siri-quality
-- **Evan (Enhanced)**, **Nathan (Enhanced)**, **Joelle (Enhanced)**, **Tom (Enhanced)**
-- **Samantha (Enhanced)** — a big step up from the default compact Samantha
-
-They download in the background (Premium are ~100–200 MB each). Once installed
-they show up in monocle automatically and, being higher quality, lead the `v`
-voice cycle — no restart needed. (Siri's own voices aren't available to
-third-party apps, so they can't appear.)
-
-## Usage
+## 🚀 Usage
 
 ```sh
 monocle README.md          # opens in the browser (review mode)
@@ -51,28 +56,28 @@ monocle --tui README.md    # opens the terminal reader
 monocle notes.txt          # plain text opens the terminal reader
 ```
 
-Markdown and HTML files open in the browser [review mode](#browser-review)
+Markdown and HTML files open in the browser [review mode](#-browser-review)
 by default. Everything else — and Markdown with `--tui` — opens the terminal
 reader.
 
 In the terminal reader, Markdown files (`.md`, `.markdown`, `.mdx`) are
 parsed structurally and rendered with their structure intact:
 
-- **headings** become section markers (shown in the status bar, jumpable
+- 📑 **headings** become section markers (shown in the status bar, jumpable
   with `n`/`p`)
-- **tables** render as an aligned grid with `│` column separators and an
+- 📊 **tables** render as an aligned grid with `│` column separators and an
   underlined header row; up/down moves between cells. Tables wider than the
   text column shrink their widest columns and wrap cell text to fit
-- **code blocks** keep their exact lines and indentation (never wrapped)
+- 💻 **code blocks** keep their exact lines and indentation (never wrapped)
   and render tinted
-- **lists** get `•` bullets (or their number) with hanging indent, one item
+- 🔘 **lists** get `•` bullets (or their number) with hanging indent, one item
   per paragraph; **blockquotes** get a `▎` bar
-- **inline styles** render: **bold**, *italic*, `code`, ~~strikethrough~~,
+- ✍️ **inline styles** render: **bold**, *italic*, `code`, ~~strikethrough~~,
   and links (underlined, URL dropped)
 
 Other files are read as plain text with paragraphs split on blank lines.
 
-## Browser review
+## 🌐 Browser review
 
 HTML files (`.html`, `.htm`) and — by default — Markdown files open in the
 browser: monocle spins up a local web server, opens the document, and overlays
@@ -83,19 +88,22 @@ monocle interviews/notification.html
 monocle docs/plan.md
 ```
 
+![monocle's browser review mode: the rendered document with a highlighted passage and a comment sidebar](assets/browser.png)
+
 HTML renders unchanged inside an iframe (its own CSS, images, and relative
 links all work — assets are served from the file's directory). Markdown is
 rendered to styled HTML (GitHub-flavored: tables, task lists, strikethrough),
 re-read on every refresh so edits show up with a reload; relative images and
 links resolve against the file's directory the same way. Either way you get a
-comment sidebar alongside the document. To leave a note, **select any text** and click the
-**💬 Comment** button that appears; type your note and press `⌘`/`Ctrl`+`Enter`
-(or *Comment*) to save. Saved comments highlight their passage in the document
-and show as cards in the sidebar — click either to jump to the other. Cards have
-*Edit* and *Delete*; saving an empty edit deletes the note.
+comment sidebar alongside the document. To leave a note, **select any text**
+and click the **💬 Comment** button that appears; type your note and press
+`⌘`/`Ctrl`+`Enter` (or *Comment*) to save. Saved comments highlight their
+passage in the document and show as cards in the sidebar — click either to
+jump to the other. Cards have *Edit* and *Delete*; saving an empty edit
+deletes the note.
 
 The toolbar's **▶ Read** button reads the document aloud, highlighting each word
-as it's spoken (the browser counterpart of the terminal's [read aloud](#read-aloud)).
+as it's spoken (the browser counterpart of the terminal's [read aloud](#-read-aloud)).
 With text selected it reads just that passage; otherwise it reads the whole
 document. **Click any word** to set the speaking cursor there: while idle the
 word is outlined to show where **▶ Read** will begin; while reading, the read
@@ -108,7 +116,7 @@ no Swift helper or `say` needed — so it works in any modern browser; the voice
 available are whatever the browser/OS provides.
 
 The toolbar's **Export** button copies every comment to your clipboard as the
-same Markdown the terminal reader produces (see [Comments](#comments)), and
+same Markdown the terminal reader produces (see [Comments](#-comments)), and
 **Copy path** copies the file's path. The server runs on `127.0.0.1` on a random
 port; press `Ctrl-C` in the terminal to stop it.
 
@@ -117,46 +125,46 @@ context), so they survive small edits and re-find the right passage even when
 the same words appear more than once. They persist in
 `~/.config/monocle/html-comments.json`, keyed by the document's path.
 
-## Controls
+## ⌨️ Controls
 
 | Key                 | Action                                          |
 | ------------------- | ----------------------------------------------- |
-| `←`/`→` `h`/`l`     | previous / next word                            |
-| `↑`/`↓` `k`/`j`     | previous / next visual line (column-preserving) |
-| `⇧`+move / `H``J``K``L` | extend a selection                          |
-| `c`                 | comment on the selection (or current line)      |
-| `x`                 | export all comments to the clipboard            |
-| `p`                 | copy the file's path (relative to the git root) |
-| `{` / `}`           | paragraph start / next paragraph                |
-| `n` / `b`           | next / previous section (markdown headings)     |
-| `r`                 | read aloud from the focal word (any key stops)  |
-| `v` / `V`           | next / previous voice while reading             |
-| `g` / `G`           | top / end of document                           |
-| `+` / `-`           | wider / narrower text column                    |
-| `s`                 | style picker                                    |
-| `t`                 | theme picker                                    |
-| `q`                 | quit                                            |
+| <kbd>←</kbd>/<kbd>→</kbd> <kbd>h</kbd>/<kbd>l</kbd> | previous / next word |
+| <kbd>↑</kbd>/<kbd>↓</kbd> <kbd>k</kbd>/<kbd>j</kbd> | previous / next visual line (column-preserving) |
+| <kbd>⇧</kbd>+move / <kbd>H</kbd><kbd>J</kbd><kbd>K</kbd><kbd>L</kbd> | extend a selection |
+| <kbd>c</kbd>        | comment on the selection (or current line)      |
+| <kbd>x</kbd>        | export all comments to the clipboard            |
+| <kbd>p</kbd>        | copy the file's path (relative to the git root) |
+| <kbd>{</kbd> / <kbd>}</kbd> | paragraph start / next paragraph        |
+| <kbd>n</kbd> / <kbd>b</kbd> | next / previous section (markdown headings) |
+| <kbd>r</kbd>        | read aloud from the focal word (any key stops)  |
+| <kbd>v</kbd> / <kbd>V</kbd> | next / previous voice while reading     |
+| <kbd>g</kbd> / <kbd>G</kbd> | top / end of document                   |
+| <kbd>+</kbd> / <kbd>-</kbd> | wider / narrower text column            |
+| <kbd>s</kbd>        | style picker                                    |
+| <kbd>t</kbd>        | theme picker                                    |
+| <kbd>q</kbd>        | quit                                            |
 
 Up/down move between *wrapped* lines, like a text editor: the focus lands on
 the word nearest your current column, and crosses paragraph boundaries
 seamlessly.
 
-## Read aloud
+## 🔊 Read aloud
 
-Press `r` to read aloud from the focal word to the end of its section (the
-heading-delimited block the cursor is in). The word highlight tracks the
+Press <kbd>r</kbd> to read aloud from the focal word to the end of its section
+(the heading-delimited block the cursor is in). The word highlight tracks the
 speech, word by word, as it plays. Pressing any key stops both the audio and
 the highlight. This is macOS-only.
 
-Press `v` (or `V` for the previous one) while reading to switch voice — it
-cycles through the installed voices for your locale and restarts from the
-current word. The choice persists across runs. (Voice switching needs the Swift
-helper below; the `say` fallback ignores it.)
+Press <kbd>v</kbd> (or <kbd>V</kbd> for the previous one) while reading to
+switch voice — it cycles through the installed voices for your locale and
+restarts from the current word. The choice persists across runs. (Voice
+switching needs the Swift helper below; the `say` fallback ignores it.)
 
 Out of the box the cycle is short and robotic — macOS only ships low-quality
 "compact" voices, and the near-identical MacinTalk novelty voices are hidden.
 Install Apple's natural voices for a dramatic upgrade; see
-[Better read-aloud voices](#better-read-aloud-voices).
+[Better read-aloud voices](#%EF%B8%8F-better-read-aloud-voices) below.
 
 To keep the highlight in exact step with the audio, monocle uses a small Swift
 helper built on `AVSpeechSynthesizer`, whose word-boundary callbacks report the
@@ -166,46 +174,78 @@ an embedded source on first use and cached, so it needs the Swift toolchain
 (`swiftc`, included with the Xcode Command Line Tools). Without it, monocle
 falls back to the `say` command with an estimated, less precise highlight.
 
-## Styles
+### 🎙️ Better read-aloud voices
 
-Press `s` to open the style picker (`j`/`k` select, `space` toggles,
-`esc` closes):
+Read aloud sounds far better with Apple's natural voices, which aren't
+installed by default — macOS ships only low-quality "compact" voices, so out
+of the box the choices are robotic and nearly identical. The good voices are
+free, but there's **no supported command-line installer**: they're on-demand
+system assets that only the Spoken Content UI can fetch. You can at least jump
+straight to the right pane:
 
-- **Word highlight** — reverse-video highlight on the focal word
-- **Line highlight** — a background bar across the current line
-- **Dim other paragraphs** — non-current paragraphs render dimmed
+```sh
+open "x-apple.systempreferences:com.apple.Accessibility-Settings.extension"
+```
 
-## Themes
+Then **Spoken Content → System Voice → Manage Voices…**, expand **English (US)**,
+and check a few good ones:
 
-Press `t` to open the theme picker (`j`/`k` to move, which previews the theme
-live; `esc`/`enter` closes). The chosen theme persists across runs. Bundled
-themes:
+- 🥇 **Ava (Premium)** — Siri-quality, the best of the bunch
+- 🥈 **Zoe (Premium)** — Siri-quality
+- **Evan (Enhanced)**, **Nathan (Enhanced)**, **Joelle (Enhanced)**, **Tom (Enhanced)**
+- **Samantha (Enhanced)** — a big step up from the default compact Samantha
+
+They download in the background (Premium are ~100–200 MB each). Once installed
+they show up in monocle automatically and, being higher quality, lead the `v`
+voice cycle — no restart needed. (Siri's own voices aren't available to
+third-party apps, so they can't appear.)
+
+## 🖌️ Styles
+
+Press <kbd>s</kbd> to open the style picker (<kbd>j</kbd>/<kbd>k</kbd> select,
+<kbd>space</kbd> toggles, <kbd>esc</kbd> closes):
+
+- 🔦 **Word highlight** — reverse-video highlight on the focal word
+- ➖ **Line highlight** — a background bar across the current line
+- 🌫️ **Dim other paragraphs** — non-current paragraphs render dimmed
+
+## 🎨 Themes
+
+Press <kbd>t</kbd> to open the theme picker (<kbd>j</kbd>/<kbd>k</kbd> to move,
+which previews the theme live; <kbd>esc</kbd>/<kbd>enter</kbd> closes). The
+chosen theme persists across runs.
+
+![monocle's terminal reader in an alternate theme, with an amber focal word and a comment card in the margin](assets/tui-theme.png)
+
+Bundled themes:
 
 - **Default** (monocle's original look)
-- **Nord**
-- **Dracula**
-- **Gruvbox Dark**
-- **Solarized Dark** / **Solarized Light**
-- **Tokyo Night**
-- **Catppuccin Mocha**
-- **One Dark**
-- **Monokai**
+- **Nord** ❄️
+- **Dracula** 🧛
+- **Gruvbox Dark** 🟤
+- **Solarized Dark** / **Solarized Light** ☀️
+- **Tokyo Night** 🌃
+- **Catppuccin Mocha** 🐱
+- **One Dark** ⚛️
+- **Monokai** 🎛️
 
 Colors are truecolor where the terminal supports it, degrading gracefully to
 the 256-color palette otherwise.
 
-## Comments
+## 💬 Comments
 
 Leave notes on passages as you read:
 
-- Hold `⇧` and move (or press capital `H`/`J`/`K`/`L`) to select a span; the
-  selection highlights as you extend it. `esc` clears it.
-- Press `c` to comment. With a selection active the note attaches to the
-  selected span; otherwise it attaches to the current line. Pressing `c` while
+![monocle's terminal reader with a selection commented: the note appears as a card in the right margin, aligned to its passage](assets/tui.png)
+
+- Hold <kbd>⇧</kbd> and move (or press capital <kbd>H</kbd>/<kbd>J</kbd>/<kbd>K</kbd>/<kbd>L</kbd>)
+  to select a span; the selection highlights as you extend it. <kbd>esc</kbd> clears it.
+- Press <kbd>c</kbd> to comment. With a selection active the note attaches to the
+  selected span; otherwise it attaches to the current line. Pressing <kbd>c</kbd> while
   the focus sits inside an existing comment reopens it for editing.
 - A small multi-line editor opens in the right margin, beside the text rather
-  than over it: type your note, `ctrl+s` to save, `esc` to cancel. Saving an
-  empty body deletes the comment.
+  than over it: type your note, <kbd>ctrl</kbd>+<kbd>s</kbd> to save, <kbd>esc</kbd>
+  to cancel. Saving an empty body deletes the comment.
 
 Saved comments live in a right-hand margin, each card aligned to the lines it
 annotates (like a document's comment sidebar); the focused note brightens.
@@ -213,9 +253,9 @@ Commented lines also get a `▌` marker in the left gutter. The margin needs a
 wide enough terminal — on narrow ones the editor falls back to a centered box
 and the note shows in the status bar instead.
 
-Press `x` to copy every comment for the document to the clipboard as Markdown —
-each note quotes its passage and names its section, a format an LLM can map
-straight back to the source:
+Press <kbd>x</kbd> to copy every comment for the document to the clipboard as
+Markdown — each note quotes its passage and names its section, a format an LLM
+can map straight back to the source:
 
 ```markdown
 # Comments on README.md
@@ -226,7 +266,7 @@ straight back to the source:
 clarify that esc also exits the reader when nothing is selected
 ```
 
-## State
+## 💾 State
 
 Reading position, style choices, theme, and column width persist across runs
 in `~/.config/monocle/state.json` (honoring `$XDG_CONFIG_HOME`). Reopening a
@@ -235,3 +275,15 @@ changed since — start over from the beginning.
 
 Comments live alongside it in `~/.config/monocle/comments.json`, keyed by the
 document's path.
+
+---
+
+<div align="center">
+
+Built with 🧋 [Bubble Tea](https://github.com/charmbracelet/bubbletea) ·
+💄 [Lip Gloss](https://github.com/charmbracelet/lipgloss) ·
+📝 [goldmark](https://github.com/yuin/goldmark)
+
+⭐ **If monocle changes how you read, consider starring the repo — it helps a lot!** ⭐
+
+</div>
