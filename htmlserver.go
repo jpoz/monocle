@@ -26,7 +26,7 @@ import (
 	gmhtml "github.com/yuin/goldmark/renderer/html"
 )
 
-//go:embed web/shell.html web/overlay.js web/overlay.css web/docpage.html web/markdown.css web/themes.css
+//go:embed web/shell.html web/overlay.js web/overlay.css web/docpage.html web/markdown.css web/themes.css web/mdx.css web/mdx.js web/mdxpage.html
 var webFS embed.FS
 
 // htmlServer hosts a single document for review: it serves the file (and its
@@ -44,6 +44,7 @@ type htmlServer struct {
 	base     string // file name within dir
 	relPath  string // path shown in the toolbar
 	markdown bool   // render the document as Markdown instead of serving it raw
+	mdx      bool   // render as MDX (components) rather than plain Markdown
 	counter  int64  // bumped per created comment to keep IDs unique within a run
 }
 
@@ -65,6 +66,7 @@ func newHTMLServer(path string) (*htmlServer, error) {
 		base:     filepath.Base(abs),
 		relPath:  repoRelPath(path),
 		markdown: isMarkdownPath(path),
+		mdx:      isMDXPath(path),
 	}, nil
 }
 
@@ -77,6 +79,8 @@ func (s *htmlServer) handler() http.Handler {
 	mux.HandleFunc("/__monocle/overlay.css", asset("web/overlay.css", "text/css"))
 	mux.HandleFunc("/__monocle/markdown.css", asset("web/markdown.css", "text/css"))
 	mux.HandleFunc("/__monocle/themes.css", asset("web/themes.css", "text/css"))
+	mux.HandleFunc("/__monocle/mdx.css", asset("web/mdx.css", "text/css"))
+	mux.HandleFunc("/__monocle/mdx.js", asset("web/mdx.js", "text/javascript"))
 	mux.HandleFunc("/__monocle/api/comments", s.handleComments)
 	mux.HandleFunc("/__monocle/api/comments/", s.handleComment)
 	mux.HandleFunc("/__monocle/api/export", s.handleExport)
@@ -95,7 +99,11 @@ func (s *htmlServer) docHandler() http.Handler {
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == s.base {
-			s.handleMarkdownDoc(w, r)
+			if s.mdx {
+				s.handleMDXDoc(w, r)
+			} else {
+				s.handleMarkdownDoc(w, r)
+			}
 			return
 		}
 		files.ServeHTTP(w, r)
@@ -183,6 +191,40 @@ func (s *htmlServer) handleMarkdownDoc(w http.ResponseWriter, _ *http.Request) {
 	}{
 		Title: s.base,
 		Body:  template.HTML(body.String()),
+	}
+	if err := tmpl.Execute(w, data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// handleMDXDoc renders the MDX source (Markdown + JSX components) into the MDX
+// document page. Like the Markdown path it re-reads per request so a refresh
+// shows edits; the frontmatter title/description become the document header.
+func (s *htmlServer) handleMDXDoc(w http.ResponseWriter, _ *http.Request) {
+	src, err := os.ReadFile(s.path)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	doc := renderMDXDocument(src)
+	tmpl, err := template.ParseFS(webFS, "web/mdxpage.html")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	data := struct {
+		Title     string
+		Head      bool
+		HeadTitle string
+		HeadDesc  string
+		Body      template.HTML
+	}{
+		Title:     s.base,
+		Head:      doc.Title != "",
+		HeadTitle: doc.Title,
+		HeadDesc:  doc.Desc,
+		Body:      template.HTML(doc.Body),
 	}
 	if err := tmpl.Execute(w, data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

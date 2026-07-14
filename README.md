@@ -29,7 +29,8 @@ your eyes never travel — the text comes to you.
 | --- | --- |
 | 🔦 **Focus view** | The current paragraph is bright, the focal word is highlighted, everything above and below dims. |
 | 📐 **Markdown-aware** | Headings, aligned tables, tinted code blocks, bullets, blockquotes — structure stays intact in the terminal. |
-| 🌐 **Browser review mode** | Markdown & HTML open in the browser with a commenting overlay, read-aloud, and live-reload on edit. |
+| 🌐 **Browser review mode** | Markdown, MDX & HTML open in the browser with a commenting overlay, read-aloud, and live-reload on edit. |
+| 🧩 **MDX components** | `.mdx` plan/doc files render their JSX components — diagrams, tables, callouts, code, API endpoints, data models, tabs, file trees — not just the prose. |
 | 💬 **Margin comments** | Annotate passages as you read — cards live in the margin like a document sidebar, and export as LLM-ready Markdown. |
 | 🔊 **Read aloud** | Speech with a word-by-word highlight that tracks the real audio, not an estimate. |
 | 🎨 **10 bundled themes** | Nord, Dracula, Catppuccin, Tokyo Night, Gruvbox… truecolor, degrading gracefully to 256 colors. |
@@ -95,8 +96,12 @@ HTML renders unchanged inside an iframe (its own CSS, images, and relative
 links all work — assets are served from the file's directory). Markdown is
 rendered to styled HTML (GitHub-flavored: tables, task lists, strikethrough),
 re-read on every refresh so edits show up with a reload; relative images and
-links resolve against the file's directory the same way. Either way you get a
-comment sidebar alongside the document. To leave a note, **select any text**
+links resolve against the file's directory the same way. **MDX** files (`.mdx`)
+go a step further: their JSX components — diagrams, callouts, tables, code and
+annotated-code blocks, diffs, data models, API endpoints, tabbed panels, file
+trees, question forms — render as real HTML (theme-tracking, with author
+diagrams scoped in shadow roots), rather than leaking as literal tags. Either
+way you get a comment sidebar alongside the document. To leave a note, **select any text**
 and click the **💬 Comment** button that appears; type your note and press
 `⌘`/`Ctrl`+`Enter` (or *Comment*) to save. Saved comments highlight their
 passage in the document and show as cards in the sidebar — click either to

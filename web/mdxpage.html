@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{.Title}}</title>
+    <link rel="stylesheet" href="/__monocle/themes.css" />
+    <link rel="stylesheet" href="/__monocle/mdx.css" />
+  </head>
+  <body>
+    <div id="arc-mdx-root">
+      {{if .Head}}<div class="arc-mdx-dochead">
+        <h1>{{.HeadTitle}}</h1>
+        {{if .HeadDesc}}<p class="arc-mdx-dochead-desc">{{.HeadDesc}}</p>{{end}}
+      </div>{{end}}
+      {{.Body}}
+    </div>
+    <script src="/__monocle/mdx.js"></script>
+  </body>
+</html>
