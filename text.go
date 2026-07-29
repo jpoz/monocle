@@ -102,8 +102,12 @@ func loadDocument(path string) (*document, error) {
 	}
 
 	var paras []rawPara
-	switch strings.ToLower(filepath.Ext(path)) {
-	case ".md", ".markdown", ".mdx":
+	switch ext := strings.ToLower(filepath.Ext(path)); ext {
+	case ".mdx":
+		// Flatten MDX components to plain Markdown first; otherwise the JSX
+		// tags dump as literal text in the terminal reader.
+		paras = parseMarkdown(mdxToMarkdown(string(data)))
+	case ".md", ".markdown":
 		paras = parseMarkdown(string(data))
 	default:
 		paras = parsePlain(string(data))
