@@ -95,8 +95,12 @@ func (s *state) setProgress(key string, idx, totalWords int) {
 	s.Docs[key] = docState{Word: idx, Words: totalWords, Updated: time.Now()}
 }
 
-// docKey identifies a document across runs by its absolute path.
+// docKey identifies a document across runs: by its absolute path on disk, or
+// by the URL itself for a document fetched over HTTP.
 func docKey(path string) string {
+	if isRemoteRef(path) {
+		return path
+	}
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return path

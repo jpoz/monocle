@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,7 +11,7 @@ import (
 )
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: monocle [--tui] <file>")
+	fmt.Fprintln(os.Stderr, "usage: monocle [--tui] <file|url>")
 	fmt.Fprintln(os.Stderr, "  --tui   read Markdown in the terminal instead of the browser")
 }
 
@@ -34,6 +35,16 @@ func main() {
 	}
 
 	path := files[0]
+
+	// An http(s) argument is a remote document: monocle fetches it and reviews
+	// it the same way it reviews a local one.
+	if isRemoteRef(path) {
+		if err := openRemote(path, tui); err != nil {
+			fmt.Fprintln(os.Stderr, "monocle:", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	// HTML documents always open in the browser with a commenting overlay:
 	// their structure is theirs to render, not ours. Markdown opens there by
@@ -59,6 +70,39 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := runTUI(doc, path); err != nil {
+		fmt.Fprintln(os.Stderr, "monocle:", err)
+		os.Exit(1)
+	}
+}
+
+// openRemote reviews a document fetched over HTTP: HTML and (unless --tui)
+// Markdown open in the browser, everything else in the terminal reader.
+func openRemote(ref string, tui bool) error {
+	f, err := fetchRemote(ref)
+	if err != nil {
+		return err
+	}
+	kind := remoteKind(f)
+
+	if kind == kindHTML && tui {
+		return errors.New("HTML documents only open in the browser (drop --tui)")
+	}
+	if kind == kindHTML || (kind != kindPlain && !tui) {
+		return serveRemoteWeb(f, kind)
+	}
+
+	doc, err := parseDocument(f.body, kind.ext(), ref)
+	if err != nil {
+		return err
+	}
+	return runTUI(doc, f.url.String())
+}
+
+// runTUI reads doc in the terminal, restoring the saved position, comments, and
+// display preferences for path (a file path or a document URL) and saving them
+// back when the reader exits.
+func runTUI(doc *document, path string) error {
 	st := loadState()
 	cs := loadComments()
 	key := docKey(path)
@@ -74,22 +118,24 @@ func main() {
 
 	final, err := tea.NewProgram(m, tea.WithAltScreen()).Run()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "monocle:", err)
-		os.Exit(1)
+		return err
 	}
 
-	if fm, ok := final.(model); ok {
-		fm.stopProc() // silence any read-aloud tail still playing
-		st.Style = &fm.style
-		st.Theme = themes[fm.themeIdx].name
-		st.Voice = fm.voiceID
-		st.setProgress(key, fm.idx, len(doc.words))
-		if err := st.save(); err != nil {
-			fmt.Fprintln(os.Stderr, "monocle: saving state:", err)
-		}
-		cs.setForDoc(key, fm.comments)
-		if err := cs.save(); err != nil {
-			fmt.Fprintln(os.Stderr, "monocle: saving comments:", err)
-		}
+	fm, ok := final.(model)
+	if !ok {
+		return nil
 	}
+	fm.stopProc() // silence any read-aloud tail still playing
+	st.Style = &fm.style
+	st.Theme = themes[fm.themeIdx].name
+	st.Voice = fm.voiceID
+	st.setProgress(key, fm.idx, len(doc.words))
+	if err := st.save(); err != nil {
+		fmt.Fprintln(os.Stderr, "monocle: saving state:", err)
+	}
+	cs.setForDoc(key, fm.comments)
+	if err := cs.save(); err != nil {
+		fmt.Fprintln(os.Stderr, "monocle: saving comments:", err)
+	}
+	return nil
 }
