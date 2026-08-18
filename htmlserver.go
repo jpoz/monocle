@@ -48,6 +48,7 @@ type htmlServer struct {
 	remote   *url.URL // document location when fetched over HTTP, else nil
 	markdown bool     // render the document as Markdown instead of serving it raw
 	mdx      bool     // render as MDX (components) rather than plain Markdown
+	editable bool     // the source can be edited in the browser and written back
 	counter  int64    // bumped per created comment to keep IDs unique within a run
 }
 
@@ -70,6 +71,7 @@ func newHTMLServer(path string) (*htmlServer, error) {
 		relPath:  repoRelPath(path),
 		markdown: isMarkdownPath(path),
 		mdx:      isMDXPath(path),
+		editable: true,
 	}, nil
 }
 
@@ -105,6 +107,7 @@ func (s *htmlServer) handler() http.Handler {
 	mux.HandleFunc("/__monocle/api/comments/", s.handleComment)
 	mux.HandleFunc("/__monocle/api/export", s.handleExport)
 	mux.HandleFunc("/__monocle/api/path", s.handlePath)
+	mux.HandleFunc("/__monocle/api/source", s.handleSource)
 	mux.Handle("/doc/", http.StripPrefix("/doc/", s.docHandler()))
 	return mux
 }
@@ -319,11 +322,13 @@ func (s *htmlServer) handleShell(w http.ResponseWriter, r *http.Request) {
 		RelPath  string
 		DocPath  string
 		Markdown bool
+		Editable bool
 	}{
 		Title:    s.base,
 		RelPath:  s.relPath,
 		DocPath:  "/doc/" + url.PathEscape(s.base),
 		Markdown: s.markdown,
+		Editable: s.editable,
 	}
 	if err := tmpl.Execute(w, data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -471,6 +476,82 @@ func (s *htmlServer) handlePath(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"ok": true, "path": p})
 }
 
+// handleSource reads (GET) or writes (PUT) the document's raw source, backing
+// the in-browser editor. Only local documents are editable — a remote one has
+// no file to write back to.
+//
+// Both directions carry the file's modification time. The editor sends back
+// the timestamp it loaded, and a write whose timestamp no longer matches the
+// file on disk is refused with 409: something else (an editor, an agent) wrote
+// the file while it was open, and silently overwriting that would lose work.
+func (s *htmlServer) handleSource(w http.ResponseWriter, r *http.Request) {
+	if !s.editable {
+		writeJSONStatus(w, http.StatusForbidden, map[string]any{
+			"error": "this document is read-only",
+		})
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		src, err := os.ReadFile(s.path)
+		if err != nil {
+			writeJSONStatus(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+		writeJSON(w, map[string]any{
+			"text":     string(src),
+			"modified": modTimeOf(s.path),
+			"path":     s.relPath,
+		})
+
+	case http.MethodPut:
+		var in struct {
+			Text     string
+			Modified int64 // modtime the editor loaded; 0 forces the write
+		}
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			writeJSONStatus(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
+			return
+		}
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		info, err := os.Stat(s.path)
+		if err != nil {
+			writeJSONStatus(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+		if in.Modified != 0 && info.ModTime().UnixMilli() != in.Modified {
+			writeJSONStatus(w, http.StatusConflict, map[string]any{
+				"error":    "the file changed on disk since you opened it",
+				"modified": info.ModTime().UnixMilli(),
+			})
+			return
+		}
+		if err := os.WriteFile(s.path, []byte(in.Text), info.Mode().Perm()); err != nil {
+			writeJSONStatus(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "modified": modTimeOf(s.path)})
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// modTimeOf returns path's modification time in milliseconds since the epoch,
+// or 0 if it cannot be stated — 0 reads as "unknown", which skips the
+// conflict check rather than blocking the write.
+func modTimeOf(path string) int64 {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0
+	}
+	return info.ModTime().UnixMilli()
+}
+
 // persist writes the document's comment list to the store. Callers must hold
 // s.mu. A save error is reported but not fatal — the in-memory list stays
 // authoritative for the session.
@@ -483,6 +564,13 @@ func (s *htmlServer) persist(list []htmlComment) {
 
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(v)
+}
+
+// writeJSONStatus writes v as JSON under a non-200 status code.
+func writeJSONStatus(w http.ResponseWriter, code int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
 	json.NewEncoder(w).Encode(v)
 }
 

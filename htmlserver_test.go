@@ -1,8 +1,12 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"io"
+	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -119,5 +123,136 @@ func TestServeHTMLDocRaw(t *testing.T) {
 	}
 	if strings.Contains(body, "monocle-width") {
 		t.Error("html shell should not include the monocle-width control")
+	}
+}
+
+// do sends a request with a JSON body and returns the status and body.
+func do(t *testing.T, srv *htmlServer, method, path, body string) (int, string) {
+	t.Helper()
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	srv.handler().ServeHTTP(rec, req)
+	out, err := io.ReadAll(rec.Result().Body)
+	if err != nil {
+		t.Fatalf("reading %s %s response: %v", method, path, err)
+	}
+	return rec.Code, string(out)
+}
+
+func TestSourceAPIRoundTrip(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	dir := t.TempDir()
+	file := filepath.Join(dir, "doc.md")
+	if err := os.WriteFile(file, []byte("# Before\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	srv, err := newHTMLServer(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	code, body := get(t, srv, "/__monocle/api/source")
+	if code != 200 {
+		t.Fatalf("GET source = %d, want 200", code)
+	}
+	var loaded struct {
+		Text     string `json:"text"`
+		Modified int64  `json:"modified"`
+	}
+	if err := json.Unmarshal([]byte(body), &loaded); err != nil {
+		t.Fatalf("decoding source: %v", err)
+	}
+	if loaded.Text != "# Before\n" {
+		t.Errorf("GET source text = %q, want the file contents", loaded.Text)
+	}
+	if loaded.Modified == 0 {
+		t.Error("GET source should report the file's modtime")
+	}
+
+	// A write carrying the loaded modtime lands on disk, and the rendered
+	// document picks it up on the next request.
+	put := fmt.Sprintf(`{"text":"# After\n","modified":%d}`, loaded.Modified)
+	code, body = do(t, srv, "PUT", "/__monocle/api/source", put)
+	if code != 200 {
+		t.Fatalf("PUT source = %d %s, want 200", code, body)
+	}
+	on, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(on) != "# After\n" {
+		t.Errorf("file on disk = %q, want the saved text", on)
+	}
+	if _, rendered := get(t, srv, "/doc/doc.md"); !strings.Contains(rendered, "After") {
+		t.Error("rendered document should show the saved edit")
+	}
+
+	// The file's permissions survive the write.
+	info, err := os.Stat(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o644 {
+		t.Errorf("file mode = %v, want 0644", info.Mode().Perm())
+	}
+}
+
+func TestSourceAPIStaleWriteRefused(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	dir := t.TempDir()
+	file := filepath.Join(dir, "doc.md")
+	if err := os.WriteFile(file, []byte("# One\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	srv, err := newHTMLServer(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Someone else edited the file since the editor loaded it: the save is
+	// refused rather than clobbering their work.
+	code, body := do(t, srv, "PUT", "/__monocle/api/source", `{"text":"# Mine\n","modified":1}`)
+	if code != http.StatusConflict {
+		t.Fatalf("stale PUT = %d %s, want 409", code, body)
+	}
+	on, _ := os.ReadFile(file)
+	if string(on) != "# One\n" {
+		t.Errorf("refused write still changed the file: %q", on)
+	}
+
+	// Sending 0 means "overwrite anyway", which the editor does after warning.
+	code, body = do(t, srv, "PUT", "/__monocle/api/source", `{"text":"# Mine\n","modified":0}`)
+	if code != 200 {
+		t.Fatalf("forced PUT = %d %s, want 200", code, body)
+	}
+	on, _ = os.ReadFile(file)
+	if string(on) != "# Mine\n" {
+		t.Errorf("file on disk = %q, want the overwritten text", on)
+	}
+}
+
+func TestRemoteDocumentIsReadOnly(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	u, err := url.Parse("https://example.com/doc.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := newRemoteHTMLServer(&remoteFetch{url: u, body: []byte("# Remote\n")}, kindMarkdown)
+	if srv.editable {
+		t.Error("a remote document has no file to write back to")
+	}
+
+	if code, _ := get(t, srv, "/"); code != 200 {
+		t.Fatalf("GET / = %d, want 200", code)
+	}
+	if _, body := get(t, srv, "/"); strings.Contains(body, "monocle-editor") {
+		t.Error("remote shell should not include the editor pane")
+	}
+	if code, _ := do(t, srv, "PUT", "/__monocle/api/source", `{"text":"x"}`); code != http.StatusForbidden {
+		t.Errorf("PUT to a remote document = %d, want 403", code)
 	}
 }

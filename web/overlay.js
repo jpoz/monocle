@@ -26,10 +26,24 @@
   var modeSelect = document.getElementById("monocle-mode");
   var themeSelect = document.getElementById("monocle-theme");
   var widthSelect = document.getElementById("monocle-width"); // absent for raw HTML docs
+  var app = document.getElementById("monocle-app");
+  // The editor controls are absent for remote documents — there is no file to
+  // write back to — so every use of them is guarded.
+  var editBtn = document.getElementById("monocle-edit");
+  var editorText = document.getElementById("monocle-editor-text");
+  var editorStatus = document.getElementById("monocle-editor-status");
+  var editorSave = document.getElementById("monocle-editor-save");
+  var editorDone = document.getElementById("monocle-editor-done");
 
   var comments = [];
   var pending = null; // {quote, prefix, suffix, rect} for a new comment
   var docWin, docDoc, docBody;
+
+  // The frame reloads whenever an edit is saved, so init runs once per loaded
+  // document: everything reaching into the frame is re-bound, while the
+  // shell's own controls are wired a single time.
+  var shellWired = false;
+  var pendingScroll = null; // frame scroll offset to restore after a save reload
 
   iframe.addEventListener("load", init);
 
@@ -49,8 +63,17 @@
     docDoc.addEventListener("mouseup", onDocMouseUp);
     docDoc.addEventListener("mousedown", hideAddBtn);
     docWin.addEventListener("scroll", hideAddBtn, true);
+    docDoc.addEventListener("keydown", onEsc);
     loadComments();
-    setupRead();
+    if (!shellWired) {
+      shellWired = true;
+      setupRead();
+      setupEditor();
+    }
+    if (pendingScroll !== null) {
+      docWin.scrollTo(0, pendingScroll);
+      pendingScroll = null;
+    }
   }
 
   // The highlight style lives inside the iframe document, so inject it there.
@@ -741,17 +764,18 @@
 
     // Clicking a word in the document moves the speaking cursor there rather
     // than stopping (see onDocMouseUp / placeCursorFromEvent). To stop, use the
-    // Stop button or Esc; Esc works from either the shell or the document frame.
-    var onEsc = function (e) {
-      if (e.key !== "Escape") return;
-      if (voiceHelp && !voiceHelp.classList.contains("hidden")) {
-        closeVoiceHelp();
-        return;
-      }
-      if (reading) stopReading();
-    };
+    // Stop button or Esc; Esc works from either the shell or the document
+    // frame — init binds onEsc inside each loaded frame.
     document.addEventListener("keydown", onEsc);
-    docDoc.addEventListener("keydown", onEsc);
+  }
+
+  function onEsc(e) {
+    if (e.key !== "Escape") return;
+    if (voiceHelp && !voiceHelp.classList.contains("hidden")) {
+      closeVoiceHelp();
+      return;
+    }
+    if (reading) stopReading();
   }
 
   // macOS exposes a pile of novelty "MacinTalk" voices (Zarvox, Boing, Bad
@@ -1276,6 +1300,196 @@
       day: "numeric",
       hour: "numeric",
       minute: "2-digit",
+    });
+  }
+
+  // --- Source editor -------------------------------------------------------
+  // Edit the document's own source beside its rendered preview. The file on
+  // disk stays the single source of truth: Save writes it, the frame reloads,
+  // and comment anchors are re-resolved against the fresh render. The controls
+  // only exist for local documents, so setupEditor is a no-op without them.
+
+  var editing = false;
+  var sourceLoaded = false;
+  var savedText = ""; // the text last known to be on disk
+  var srcModified = 0; // its modtime, echoed back so the server can spot
+  // an edit made behind our back
+  var conflict = false; // a save was refused as stale; the next one overwrites
+  var everSaved = false; // no "Saved" status before there is a save to report
+
+  function setupEditor() {
+    if (!editBtn) return;
+
+    editBtn.addEventListener("click", function () {
+      if (editing) closeEditor();
+      else openEditor();
+    });
+    editorSave.addEventListener("click", saveSource);
+    editorDone.addEventListener("click", closeEditor);
+    editorText.addEventListener("input", updateEditorStatus);
+    editorText.addEventListener("keydown", onEditorKey);
+
+    // ⌘/Ctrl+S saves from anywhere in the shell while the editor is open.
+    document.addEventListener("keydown", function (e) {
+      if (!editing) return;
+      if ((e.metaKey || e.ctrlKey) && (e.key === "s" || e.key === "S")) {
+        e.preventDefault();
+        saveSource();
+      }
+    });
+
+    // Closing the pane keeps unsaved text in the textarea, but closing the tab
+    // would drop it — so that one gets the browser's own warning.
+    window.addEventListener("beforeunload", function (e) {
+      if (!isDirty()) return;
+      e.preventDefault();
+      e.returnValue = "";
+    });
+
+    updateEditorStatus();
+  }
+
+  function openEditor() {
+    editing = true;
+    app.classList.add("editing");
+    editBtn.classList.add("editing");
+    if (sourceLoaded) editorText.focus();
+    else loadSource();
+    updateEditorStatus();
+  }
+
+  function closeEditor() {
+    editing = false;
+    app.classList.remove("editing");
+    editBtn.classList.remove("editing");
+    updateEditorStatus();
+  }
+
+  function isDirty() {
+    return sourceLoaded && editorText.value !== savedText;
+  }
+
+  function loadSource() {
+    editorText.disabled = true;
+    setEditorStatus("Loading…", "");
+    jsonFetch(API + "/source")
+      .then(function (res) {
+        editorText.disabled = false;
+        if (res.status !== 200) throw new Error(res.data.error || "could not read the file");
+        sourceLoaded = true;
+        savedText = res.data.text || "";
+        srcModified = res.data.modified || 0;
+        editorText.value = savedText;
+        editorText.focus();
+        updateEditorStatus();
+      })
+      .catch(function (err) {
+        editorText.disabled = false;
+        setEditorStatus(String(err.message || err), "error");
+      });
+  }
+
+  function saveSource() {
+    if (!sourceLoaded) return;
+    var text = editorText.value;
+    editorSave.disabled = true;
+    setEditorStatus("Saving…", "");
+    jsonFetch(API + "/source", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      // A pending conflict sends 0, which tells the server to skip the
+      // staleness check — this save is the deliberate overwrite.
+      body: JSON.stringify({ text: text, modified: conflict ? 0 : srcModified }),
+    })
+      .then(function (res) {
+        editorSave.disabled = false;
+        if (res.status === 409) {
+          conflict = true;
+          srcModified = res.data.modified || 0;
+          setEditorStatus("Changed on disk — Save again to overwrite", "error");
+          return;
+        }
+        if (res.status !== 200 || !res.data.ok) {
+          setEditorStatus(res.data.error || "could not save the file", "error");
+          return;
+        }
+        conflict = false;
+        everSaved = true;
+        savedText = text;
+        srcModified = res.data.modified || 0;
+        updateEditorStatus();
+        refreshPreview();
+        toast("Saved");
+      })
+      .catch(function (err) {
+        editorSave.disabled = false;
+        setEditorStatus(String(err.message || err), "error");
+      });
+  }
+
+  // refreshPreview reloads the document frame in place, keeping the reader's
+  // scroll position. Read-aloud is stopped first: its offsets and marks belong
+  // to the document that is about to be replaced.
+  function refreshPreview() {
+    if (reading) stopReading();
+    cursorSet = false;
+    pendingScroll = docWin ? docWin.scrollY : null;
+    try {
+      iframe.contentWindow.location.reload();
+    } catch (e) {
+      iframe.src = iframe.getAttribute("src");
+    }
+  }
+
+  // Tab indents instead of leaving the textarea — Markdown nests lists and
+  // code by indentation, so the key is worth more here than as a focus move.
+  // Shift+Tab is left alone, so there is still a way out by keyboard.
+  function onEditorKey(e) {
+    if (e.key !== "Tab" || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
+    e.preventDefault();
+    // execCommand keeps the textarea's native undo stack intact; setRangeText
+    // is the fallback where it is gone.
+    var inserted = false;
+    try {
+      inserted = document.execCommand("insertText", false, "  ");
+    } catch (err) {}
+    if (!inserted) {
+      var at = editorText.selectionStart;
+      editorText.setRangeText("  ", at, editorText.selectionEnd, "end");
+    }
+    updateEditorStatus();
+  }
+
+  function updateEditorStatus() {
+    if (!editBtn) return;
+    var dirty = isDirty();
+    editorSave.disabled = !dirty && !conflict;
+    editBtn.textContent = dirty ? "✎ Edit ●" : "✎ Edit";
+    editBtn.title = dirty
+      ? "Edit the source — unsaved changes (⌘/Ctrl+S saves)"
+      : "Edit the source (⌘/Ctrl+S saves)";
+    if (conflict) return; // leave the conflict message standing until it is resolved
+    if (dirty) setEditorStatus("Unsaved changes", "dirty");
+    else setEditorStatus(everSaved ? "Saved" : "", "");
+  }
+
+  function setEditorStatus(msg, cls) {
+    editorStatus.textContent = msg;
+    editorStatus.className = cls;
+  }
+
+  // jsonFetch resolves to {status, data} so callers can branch on the status
+  // code (409 for a stale save) and still read the JSON body.
+  function jsonFetch(url, opts) {
+    return fetch(url, opts).then(function (r) {
+      return r
+        .json()
+        .catch(function () {
+          return {};
+        })
+        .then(function (d) {
+          return { status: r.status, data: d || {} };
+        });
     });
   }
 

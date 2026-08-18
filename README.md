@@ -30,6 +30,7 @@ your eyes never travel — the text comes to you.
 | 🔦 **Focus view** | The current paragraph is bright, the focal word is highlighted, everything above and below dims. |
 | 📐 **Markdown-aware** | Headings, aligned tables, tinted code blocks, bullets, blockquotes — structure stays intact in the terminal. |
 | 🌐 **Browser review mode** | Markdown, MDX & HTML open in the browser with a commenting overlay, read-aloud, and live-reload on edit. |
+| ✎ **Edit in place** | Fix a typo or rewrite a paragraph beside the rendered preview — Save writes the file and re-renders. |
 | 🧩 **MDX components** | `.mdx` plan/doc files render their JSX components — diagrams, tables, callouts, code, API endpoints, data models, tabs, file trees — not just the prose. |
 | 💬 **Margin comments** | Annotate passages as you read — cards live in the margin like a document sidebar, and export as LLM-ready Markdown. |
 | 🔊 **Read aloud** | Speech with a word-by-word highlight that tracks the real audio, not an estimate. |
@@ -120,6 +121,19 @@ Press **Esc** or the button again (**■ Stop**) to
 stop. This uses the browser's built-in speech synthesis —
 no Swift helper or `say` needed — so it works in any modern browser; the voices
 available are whatever the browser/OS provides.
+
+The toolbar's **✎ Edit** button opens the document's own source beside the
+rendered preview, so a typo you notice while reading is a few keystrokes away
+from being fixed. `⌘`/`Ctrl`+`S` (or **Save**) writes the file and reloads the
+preview, re-anchoring your comments against the fresh render; `Tab` indents
+instead of leaving the box. Unsaved changes show as a dot on the **✎ Edit**
+button, and **Done** closes the pane without discarding them.
+
+The file on disk stays the source of truth. If something else — your editor, an
+agent — rewrote the file while it was open, the save is refused with *Changed on
+disk*; saving again is the deliberate overwrite. Remote documents (`monocle
+https://…`) are read-only: there is no file to write back to, so they have no
+**✎ Edit** button.
 
 The toolbar's **Export** button copies every comment to your clipboard as the
 same Markdown the terminal reader produces (see [Comments](#-comments)), and

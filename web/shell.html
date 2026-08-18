@@ -13,6 +13,11 @@
         <div class="left">
           <span class="logo">◉ monocle</span>
           <span id="monocle-title">{{.RelPath}}</span>
+          {{if .Editable}}
+          <button id="monocle-edit" title="Edit the source (⌘/Ctrl+S saves)">
+            ✎ Edit
+          </button>
+          {{end}}
         </div>
         <div class="right">
           <select id="monocle-mode" title="Light / dark mode">
@@ -66,6 +71,26 @@
         </div>
       </header>
       <div id="monocle-main">
+        {{if .Editable}}
+        <section id="monocle-editor" aria-label="Document source">
+          <div class="editor-head">
+            <span class="editor-label">Source</span>
+            <span id="monocle-editor-status"></span>
+            <button id="monocle-editor-save" title="Save to disk (⌘/Ctrl+S)">
+              Save
+            </button>
+            <button id="monocle-editor-done" class="secondary" title="Close the editor">
+              Done
+            </button>
+          </div>
+          <textarea
+            id="monocle-editor-text"
+            spellcheck="false"
+            wrap="off"
+            placeholder="Loading…"
+          ></textarea>
+        </section>
+        {{end}}
         <iframe id="monocle-doc" src="{{.DocPath}}" title="document"></iframe>
         <aside id="monocle-sidebar">
           <div id="monocle-comments"></div>
