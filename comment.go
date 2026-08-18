@@ -121,8 +121,12 @@ func copyToClipboard(s string) error {
 
 // repoRelPath returns path relative to the enclosing git repository's root,
 // or the cleaned absolute path when the file isn't inside a repo. The repo is
-// found by walking up for a .git entry, so git need not be installed.
+// found by walking up for a .git entry, so git need not be installed. A remote
+// document has no path to shorten, so its URL comes back unchanged.
 func repoRelPath(path string) string {
+	if isRemoteRef(path) {
+		return path
+	}
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return path

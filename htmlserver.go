@@ -9,6 +9,7 @@ import (
 	"html/template"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -33,19 +34,21 @@ var webFS embed.FS
 // sibling assets) inside an iframe, layers a commenting overlay on top, and
 // persists notes through a small JSON API. HTML files are served verbatim;
 // Markdown files are rendered to HTML on each request, so a browser refresh
-// picks up edits. One process serves one document; the comment list is
+// picks up edits. Remote documents (remote != nil) are re-fetched per request
+// instead of re-read. One process serves one document; the comment list is
 // guarded by mu because the browser fires concurrent fetches.
 type htmlServer struct {
 	mu       sync.Mutex
 	store    *htmlCommentStore
-	key      string // docKey, the persistence key
-	path     string // absolute path to the document
-	dir      string // directory the file lives in (asset root)
-	base     string // file name within dir
-	relPath  string // path shown in the toolbar
-	markdown bool   // render the document as Markdown instead of serving it raw
-	mdx      bool   // render as MDX (components) rather than plain Markdown
-	counter  int64  // bumped per created comment to keep IDs unique within a run
+	key      string   // docKey, the persistence key
+	path     string   // absolute path to the document, or its URL when remote
+	dir      string   // directory the file lives in (asset root); local only
+	base     string   // file name within dir, or the URL's last segment
+	relPath  string   // path (or URL) shown in the toolbar
+	remote   *url.URL // document location when fetched over HTTP, else nil
+	markdown bool     // render the document as Markdown instead of serving it raw
+	mdx      bool     // render as MDX (components) rather than plain Markdown
+	counter  int64    // bumped per created comment to keep IDs unique within a run
 }
 
 // newHTMLServer builds the review server for an HTML or Markdown file.
@@ -68,6 +71,23 @@ func newHTMLServer(path string) (*htmlServer, error) {
 		markdown: isMarkdownPath(path),
 		mdx:      isMDXPath(path),
 	}, nil
+}
+
+// newRemoteHTMLServer builds the review server for a document fetched over
+// HTTP. The document is re-fetched per request, so a browser refresh picks up
+// changes the same way it picks up edits to a local file.
+func newRemoteHTMLServer(f *remoteFetch, kind docKind) *htmlServer {
+	ref := f.url.String()
+	return &htmlServer{
+		store:    loadHTMLComments(),
+		key:      docKey(ref),
+		path:     ref,
+		base:     remoteBase(f.url),
+		relPath:  ref,
+		remote:   f.url,
+		markdown: kind == kindMarkdown || kind == kindMDX,
+		mdx:      kind == kindMDX,
+	}
 }
 
 // handler routes the shell page, embedded assets, comment API, and the
@@ -93,6 +113,9 @@ func (s *htmlServer) handler() http.Handler {
 // the document itself get the rendered page; everything else (images and
 // other relative assets) falls through to the file server.
 func (s *htmlServer) docHandler() http.Handler {
+	if s.remote != nil {
+		return s.remoteDocHandler()
+	}
 	files := http.FileServer(http.Dir(s.dir))
 	if !s.markdown {
 		return files
@@ -110,6 +133,34 @@ func (s *htmlServer) docHandler() http.Handler {
 	})
 }
 
+// remoteDocHandler serves a document fetched over HTTP. Only the document
+// itself is proxied — it has to be same-origin for the overlay to reach into
+// it. Anything else that lands under /doc/ is a relative asset or link, and is
+// bounced back to the origin, which serves it with the user's own cookies.
+func (s *htmlServer) remoteDocHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != s.base {
+			ref := &url.URL{Path: r.URL.Path, RawQuery: r.URL.RawQuery}
+			http.Redirect(w, r, s.remote.ResolveReference(ref).String(), http.StatusFound)
+			return
+		}
+		f, err := fetchRemote(s.remote.String())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		switch {
+		case s.mdx:
+			s.writeMDXPage(w, f.body)
+		case s.markdown:
+			s.writeMarkdownPage(w, f.body)
+		default:
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Write(withBaseHref(f.body, f.url))
+		}
+	})
+}
+
 // serveWeb starts the review server for an HTML or Markdown file, opens it
 // in the browser, and blocks until interrupted (Ctrl-C).
 func serveWeb(path string) error {
@@ -117,7 +168,17 @@ func serveWeb(path string) error {
 	if err != nil {
 		return err
 	}
+	return srv.serve()
+}
 
+// serveRemoteWeb starts the review server for a document fetched over HTTP.
+func serveRemoteWeb(f *remoteFetch, kind docKind) error {
+	return newRemoteHTMLServer(f, kind).serve()
+}
+
+// serve listens on a loopback port, opens the review page in the browser, and
+// blocks until interrupted (Ctrl-C).
+func (srv *htmlServer) serve() error {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return err
@@ -174,6 +235,11 @@ func (s *htmlServer) handleMarkdownDoc(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	s.writeMarkdownPage(w, src)
+}
+
+// writeMarkdownPage renders Markdown source into the document page template.
+func (s *htmlServer) writeMarkdownPage(w http.ResponseWriter, src []byte) {
 	var body bytes.Buffer
 	if err := mdRenderer.Convert(src, &body); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -206,6 +272,11 @@ func (s *htmlServer) handleMDXDoc(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	s.writeMDXPage(w, src)
+}
+
+// writeMDXPage renders MDX source into the MDX document page template.
+func (s *htmlServer) writeMDXPage(w http.ResponseWriter, src []byte) {
 	doc := renderMDXDocument(src)
 	tmpl, err := template.ParseFS(webFS, "web/mdxpage.html")
 	if err != nil {
@@ -251,7 +322,7 @@ func (s *htmlServer) handleShell(w http.ResponseWriter, r *http.Request) {
 	}{
 		Title:    s.base,
 		RelPath:  s.relPath,
-		DocPath:  "/doc/" + s.base,
+		DocPath:  "/doc/" + url.PathEscape(s.base),
 		Markdown: s.markdown,
 	}
 	if err := tmpl.Execute(w, data); err != nil {
@@ -389,9 +460,10 @@ func (s *htmlServer) handleExport(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"ok": true, "markdown": md})
 }
 
-// handlePath copies the document's repo-relative path to the clipboard.
+// handlePath copies the document's repo-relative path — or its URL, for a
+// remote document — to the clipboard.
 func (s *htmlServer) handlePath(w http.ResponseWriter, r *http.Request) {
-	p := repoRelPath(s.path)
+	p := s.relPath
 	if err := copyToClipboard(p); err != nil {
 		writeJSON(w, map[string]any{"ok": false, "error": err.Error(), "path": p})
 		return

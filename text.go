@@ -100,9 +100,15 @@ func loadDocument(path string) (*document, error) {
 	if err != nil {
 		return nil, err
 	}
+	return parseDocument(data, filepath.Ext(path), path)
+}
 
+// parseDocument builds a document from source bytes. ext selects the parser
+// (Markdown for .md/.markdown/.mdx, plain text otherwise) and name labels
+// parse errors — a file path, or a URL for a document fetched over HTTP.
+func parseDocument(data []byte, ext, name string) (*document, error) {
 	var paras []rawPara
-	switch ext := strings.ToLower(filepath.Ext(path)); ext {
+	switch strings.ToLower(ext) {
 	case ".mdx":
 		// Flatten MDX components to plain Markdown first; otherwise the JSX
 		// tags dump as literal text in the terminal reader.
@@ -115,7 +121,7 @@ func loadDocument(path string) (*document, error) {
 
 	doc, err := buildDocument(paras)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
+		return nil, fmt.Errorf("%s: %w", name, err)
 	}
 	return doc, nil
 }
